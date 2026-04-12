@@ -54,69 +54,90 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    print(f"\n🔍 STARTING save_track_selection for user: {user_id}, tracks: {selected_tracks}")
+    
     try:
+        print(f"1️⃣ Getting Google Sheets client...")
         client = _get_google_sheets_client()
         if not client:
             print(f"❌ Could not connect to Google Sheets")
             return False
 
+        print(f"2️⃣ Opening spreadsheet: {GOOGLE_SPREADSHEET_NAME}")
         spreadsheet = client.open(GOOGLE_SPREADSHEET_NAME)
+        print(f"✅ Spreadsheet opened successfully")
         
         # Get the latest worksheet
         worksheets = spreadsheet.worksheets()
+        print(f"3️⃣ Found {len(worksheets)} worksheets")
         if not worksheets:
             print(f"❌ No worksheets found in {GOOGLE_SPREADSHEET_NAME}")
             return False
         
         worksheet = worksheets[-1]
-        
-        # Get all records to find or create the mentor row
-        records = worksheet.get_all_records()
+        print(f"✅ Using worksheet: {worksheet.title}")
         
         # Get the header row first
+        print(f"4️⃣ Getting header row...")
         header = worksheet.row_values(1)
-        print(f"DEBUG: Header columns: {header}")
+        print(f"DEBUG: Header columns ({len(header)} total): {header}")
+        
         if "Selected Tracks" not in header:
-            print(f"⚠️ 'Selected Tracks' column not found in worksheet")
+            print(f"❌ 'Selected Tracks' column NOT found in worksheet!")
+            print(f"   Available columns: {header}")
             return False
+        print(f"✅ 'Selected Tracks' column found at index {header.index('Selected Tracks')}")
+        
+        # Get all records to find or create the mentor row
+        print(f"5️⃣ Getting all records from worksheet...")
+        records = worksheet.get_all_records()
+        print(f"✅ Found {len(records)} total records in sheet")
         
         # Find the user in the sheet
+        print(f"6️⃣ Searching for user {user_id}...")
         user_row = None
         user_row_index = None
         for i, record in enumerate(records):
             slack_id = record.get("Slack ID", "").strip()
-            print(f"DEBUG: Checking record {i}: Slack ID='{slack_id}' vs '{user_id}'")
+            print(f"   Record {i}: Slack ID='{slack_id}'")
             if slack_id == user_id:
                 user_row = i + 2  # Sheet rows are 1-indexed, +1 for header
                 user_row_index = i
-                print(f"DEBUG: Found user at record index {i}, sheet row {user_row}")
+                print(f"✅ FOUND user at record index {i}, sheet row {user_row}")
                 break
         
         # If user not found, add them to the sheet
         if user_row is None:
-            print(f"ℹ️ Adding new mentor {user_id} to sheet")
+            print(f"⚠️ User {user_id} NOT in sheet - adding as new user")
             try:
-                # Append a new row with just the user ID and tracks
-                new_row = [user_id] + [""] * (len(header) - 2) + [",".join(selected_tracks)]
-                worksheet.append_row(new_row)
-                print(f"✅ Saved track selection for new user {user_id}: {','.join(selected_tracks)}")
+                tracks_str = ",".join(selected_tracks)
+                # Append a new row - just add to the end
+                worksheet.append_row([user_id, "", "", "", tracks_str])
+                print(f"✅ Successfully appended new user with tracks: {tracks_str}")
                 return True
             except Exception as e:
-                print(f"❌ Error adding new user to sheet: {e}")
+                print(f"❌ Error appending new user to sheet: {e}")
+                import traceback
+                traceback.print_exc()
                 return False
         
         # Update the "Selected Tracks" column for existing user
-        col_index = header.index("Selected Tracks") + 1
+        print(f"7️⃣ Updating existing user's tracks...")
+        col_index = header.index("Selected Tracks") + 1  # +1 because columns are 1-indexed
         tracks_str = ",".join(selected_tracks)
         
-        print(f"DEBUG: Updating row {user_row}, column {col_index} with: {tracks_str}")
+        print(f"   Row: {user_row}, Column: {col_index}, Value: {tracks_str}")
         worksheet.update_cell(user_row, col_index, tracks_str)
+        print(f"✅ Successfully updated cell")
         
-        print(f"✅ Updated track selection for user {user_id}: {tracks_str}")
+        print(f"✅ COMPLETED - Updated track selection for user {user_id}: {tracks_str}\n")
         return True
         
     except Exception as e:
-        print(f"❌ Error saving track selection: {e}")
+        print(f"❌ FAILED - Error saving track selection: {e}")
+        import traceback
+        traceback.print_exc()
+        print()
         return False
 
 

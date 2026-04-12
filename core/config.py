@@ -96,19 +96,6 @@ TRACKS = {
     }
 }
 
-# Google Sheets configuration
-GOOGLE_SHEETS_CONFIG = {
-    "credentials_file": os.getenv(
-        "GOOGLE_CREDENTIALS_FILE",
-        "C:/Users/akinn/Downloads/hng13-cohort-bot-5f6b4e977bb4.json"
-    ),
-    "spreadsheet_name": os.getenv(
-        "GOOGLE_SPREADSHEET_NAME",
-        "HNG Mentor Track Selection"
-    ),
-    "worksheet_prefix": os.getenv("GOOGLE_WORKSHEET_PREFIX", "Mentors")
-}
-
 def get_readable_track_name(track_id):
     """Get human-readable track name from track ID"""
     if track_id in TRACKS:

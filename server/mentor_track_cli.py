@@ -75,33 +75,41 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
         
         # Get the header row first
         header = worksheet.row_values(1)
+        print(f"DEBUG: Header columns: {header}")
         if "Selected Tracks" not in header:
             print(f"⚠️ 'Selected Tracks' column not found in worksheet")
             return False
         
         # Find the user in the sheet
         user_row = None
+        user_row_index = None
         for i, record in enumerate(records):
-            if record.get("Slack ID", "").strip() == user_id:
+            slack_id = record.get("Slack ID", "").strip()
+            print(f"DEBUG: Checking record {i}: Slack ID='{slack_id}' vs '{user_id}'")
+            if slack_id == user_id:
                 user_row = i + 2  # Sheet rows are 1-indexed, +1 for header
+                user_row_index = i
+                print(f"DEBUG: Found user at record index {i}, sheet row {user_row}")
                 break
         
         # If user not found, add them to the sheet
-        if not user_row:
+        if user_row is None:
             print(f"ℹ️ Adding new mentor {user_id} to sheet")
-            # Append a new row with just the user ID and tracks
-            new_row = [user_id] + [""] * (len(header) - 2) + [",".join(selected_tracks)]
-            worksheet.append_row(new_row)
-            print(f"✅ Saved track selection for new user {user_id}: {','.join(selected_tracks)}")
-            return True
+            try:
+                # Append a new row with just the user ID and tracks
+                new_row = [user_id] + [""] * (len(header) - 2) + [",".join(selected_tracks)]
+                worksheet.append_row(new_row)
+                print(f"✅ Saved track selection for new user {user_id}: {','.join(selected_tracks)}")
+                return True
+            except Exception as e:
+                print(f"❌ Error adding new user to sheet: {e}")
+                return False
         
-        # Update the "Selected Tracks" column
+        # Update the "Selected Tracks" column for existing user
         col_index = header.index("Selected Tracks") + 1
-        
-        # Format tracks as comma-separated string
         tracks_str = ",".join(selected_tracks)
         
-        # Update the cell
+        print(f"DEBUG: Updating row {user_row}, column {col_index} with: {tracks_str}")
         worksheet.update_cell(user_row, col_index, tracks_str)
         
         print(f"✅ Updated track selection for user {user_id}: {tracks_str}")

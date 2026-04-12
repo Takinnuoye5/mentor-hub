@@ -424,8 +424,12 @@ def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
             try:
                 if not TESTING_MODE:
                     dm = bot_client.conversations_open(users=user_id)
-                    bot_client.chat_postMessage(channel=dm["channel"]["id"], 
-                                               text=f"✅ Selected: {', '.join(readable)}")
+                    message = f"""✅ Your track selection has been recorded.
+
+Selected Tracks: {', '.join(readable)}
+
+You will be added to all stage channels for these tracks going forward. Thank you for mentoring with HNG!"""
+                    bot_client.chat_postMessage(channel=dm["channel"]["id"], text=message)
             except Exception as e:
                 logger.error(f"DM error: {e}")
             

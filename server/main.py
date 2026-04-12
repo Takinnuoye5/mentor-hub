@@ -430,7 +430,7 @@ def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=3000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
 #!/usr/bin/env python3
 """
 Mentor Track Slack Command Handler
@@ -1782,5 +1782,5 @@ if __name__ == "__main__":
     import uvicorn
     import time
     
-    port = int(os.environ.get("PORT", 3000))
+    port = int(os.environ.get("PORT", 8001))
     uvicorn.run(app, host="0.0.0.0", port=port)

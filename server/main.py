@@ -138,14 +138,15 @@ def validate_track_selection(tracks: List[str]) -> bool:
 
 def verify_slack_signature(request_headers: Dict[str, str], raw_body: bytes) -> bool:
     """Verify Slack request signature for security"""
-    timestamp = request_headers.get("X-Slack-Request-Timestamp", "")
-    signature = request_headers.get("X-Slack-Signature", "")
+    timestamp = request_headers.get("x-slack-request-timestamp") or request_headers.get("X-Slack-Request-Timestamp", "")
+    signature = request_headers.get("x-slack-signature") or request_headers.get("X-Slack-Signature", "")
     
     # Log debug info
     logger.debug(f"Verifying signature - timestamp: {timestamp}, signature present: {bool(signature)}")
     
     if not timestamp or not signature:
         logger.error(f"Missing headers - timestamp: {bool(timestamp)}, signature: {bool(signature)}")
+        logger.error(f"Available headers: {list(request_headers.keys())}")
         return False
     
     try:
@@ -278,7 +279,8 @@ async def handle_mentor_track_command(request: Request) -> Response:
     """Handle /mentor-track Slack command"""
     # Verify signature
     raw_body = await request.body()
-    if not verify_slack_signature(dict(request.headers), raw_body):
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    if not verify_slack_signature(headers, raw_body):
         logger.warning("Unauthorized request to /mentor-track")
         raise HTTPException(status_code=403, detail="Invalid signature")
     
@@ -337,7 +339,8 @@ async def handle_mentor_track_command(request: Request) -> Response:
 async def handle_interactive_components(request: Request) -> JSONResponse:
     """Handle interactive components"""
     raw_body = await request.body()
-    if not verify_slack_signature(dict(request.headers), raw_body):
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    if not verify_slack_signature(headers, raw_body):
         logger.warning("Unauthorized interactive request")
         raise HTTPException(status_code=403)
     

@@ -40,8 +40,8 @@ load_dotenv()
 
 # Import core modules
 try:
-    from core import user_cache
-    from core.config import (
+    from mentor_hub.core import user_cache
+    from mentor_hub.core.config import (
         CHANNEL_IDS, 
         SYSTEM_SETTINGS, 
         TRACKS,
@@ -49,12 +49,27 @@ try:
         GOOGLE_SPREADSHEET_NAME
     )
 except ImportError:
-    logger.warning("Failed to import core modules - using defaults")
-    CHANNEL_IDS = {}
-    SYSTEM_SETTINGS = {"testing_mode": False}
-    TRACKS = {}
-    GOOGLE_CREDENTIALS_FILE = None
-    GOOGLE_SPREADSHEET_NAME = "HNG 14 Mentor Track Selection"
+    # Fallback for direct execution during development
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    try:
+        from core import user_cache
+        from core.config import (
+            CHANNEL_IDS,
+            SYSTEM_SETTINGS,
+            TRACKS,
+            GOOGLE_CREDENTIALS_FILE,
+            GOOGLE_SPREADSHEET_NAME
+        )
+    except ImportError:
+        logger.error("Failed to import core modules")
+        CHANNEL_IDS = {}
+        SYSTEM_SETTINGS = {"testing_mode": False}
+        TRACKS = {}
+        # Read from environment variables as fallback
+        GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE")
+        GOOGLE_SPREADSHEET_NAME = os.getenv("GOOGLE_SPREADSHEET_NAME", "HNG 14 Mentor Track Selection")
 
 # ============================================================================
 # ENVIRONMENT VARIABLES

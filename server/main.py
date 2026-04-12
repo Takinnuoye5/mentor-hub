@@ -140,8 +140,15 @@ def verify_slack_signature(request_headers: Dict[str, str], raw_body: bytes) -> 
     timestamp = request_headers.get("X-Slack-Request-Timestamp", "")
     signature = request_headers.get("X-Slack-Signature", "")
     
+    # Log debug info
+    logger.debug(f"Verifying signature - timestamp: {timestamp}, signature present: {bool(signature)}")
+    
+    if not timestamp or not signature:
+        logger.error(f"Missing headers - timestamp: {bool(timestamp)}, signature: {bool(signature)}")
+        return False
+    
     try:
-        return signature_verifier.is_valid(body=raw_body, timestamp=timestamp, signature=signature)
+        return signature_verifier.is_valid(timestamp=timestamp, body=raw_body, signature=signature)
     except Exception as e:
         logger.error(f"Error verifying Slack signature: {e}")
         return False

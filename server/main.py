@@ -141,7 +141,7 @@ def verify_slack_signature(request_headers: Dict[str, str], raw_body: bytes) -> 
     signature = request_headers.get("X-Slack-Signature", "")
     
     try:
-        return signature_verifier.is_valid_request(raw_body, timestamp, signature)
+        return signature_verifier.is_valid(body=raw_body, timestamp=timestamp, signature=signature)
     except Exception as e:
         logger.error(f"Error verifying Slack signature: {e}")
         return False

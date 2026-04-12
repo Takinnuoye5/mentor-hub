@@ -71,14 +71,26 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
         spreadsheet = client.open(GOOGLE_SPREADSHEET_NAME)
         logger.info(f"✅ Spreadsheet opened successfully")
         
-        # Get the latest worksheet
+        # Get worksheets and find the "Mentors" tab
         worksheets = spreadsheet.worksheets()
-        logger.info(f"3️⃣ Found {len(worksheets)} worksheets")
+        logger.info(f"3️⃣ Found {len(worksheets)} worksheets: {[w.title for w in worksheets]}")
         if not worksheets:
             logger.error(f"❌ No worksheets found in {GOOGLE_SPREADSHEET_NAME}")
             return False
         
-        worksheet = worksheets[-1]
+        # Try to find "Mentors" worksheet, otherwise use the first one with data
+        worksheet = None
+        for ws in worksheets:
+            if "Mentors" in ws.title:
+                worksheet = ws
+                logger.info(f"✅ Found 'Mentors' worksheet: {ws.title}")
+                break
+        
+        # Fallback to first worksheet if no "Mentors" found
+        if not worksheet:
+            worksheet = worksheets[0]
+            logger.warning(f"⚠️ No 'Mentors' worksheet found, using: {worksheet.title}")
+        
         logger.info(f"✅ Using worksheet: {worksheet.title}")
         
         # Get the header row first
@@ -164,7 +176,16 @@ def check_if_mentor_exists(user_id: str) -> bool:
         if not worksheets:
             return False
         
-        worksheet = worksheets[-1]
+        # Use the same worksheet selection logic
+        worksheet = None
+        for ws in worksheets:
+            if "Mentors" in ws.title:
+                worksheet = ws
+                break
+        
+        if not worksheet:
+            worksheet = worksheets[0]
+        
         records = worksheet.get_all_records()
         
         for record in records:

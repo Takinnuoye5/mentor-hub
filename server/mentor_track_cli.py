@@ -73,6 +73,12 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
         # Get all records to find or create the mentor row
         records = worksheet.get_all_records()
         
+        # Get the header row first
+        header = worksheet.row_values(1)
+        if "Selected Tracks" not in header:
+            print(f"⚠️ 'Selected Tracks' column not found in worksheet")
+            return False
+        
         # Find the user in the sheet
         user_row = None
         for i, record in enumerate(records):
@@ -90,12 +96,6 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
             return True
         
         # Update the "Selected Tracks" column
-        # Find the column index for "Selected Tracks"
-        header = worksheet.row_values(1)
-        if "Selected Tracks" not in header:
-            print(f"⚠️ 'Selected Tracks' column not found in worksheet")
-            return False
-        
         col_index = header.index("Selected Tracks") + 1
         
         # Format tracks as comma-separated string

@@ -84,11 +84,6 @@ TRACKS = {
         "emoji": "🤖",
         "channel_id": "C09BDJL692N"
     },
-    "graphics": {
-        "name": "Graphics Design",
-        "emoji": "🖌️",
-        "channel_id": "C09BDJL7RMN"
-    },
     "marketing": {
         "name": "Marketing",
         "emoji": "📣",
@@ -98,11 +93,6 @@ TRACKS = {
         "name": "Video Production",
         "emoji": "🎬",
         "channel_id": "C09BDJL9U5M"
-    },
-    "automations": {
-        "name": "Automations",
-        "emoji": "⚡",
-        "channel_id": "C09BDJLA78N"
     }
 }
 

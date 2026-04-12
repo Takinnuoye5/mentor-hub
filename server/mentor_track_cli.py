@@ -80,11 +80,13 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
                 user_row = i + 2  # Sheet rows are 1-indexed, +1 for header
                 break
         
-        # If user not found, log it but don't fail
+        # If user not found, add them to the sheet
         if not user_row:
-            print(f"⚠️ User {user_id} not found in mentor sheet (new user)")
-            # We could add them here, but for now just return success
-            # as the track selection is still valid
+            print(f"ℹ️ Adding new mentor {user_id} to sheet")
+            # Append a new row with just the user ID and tracks
+            new_row = [user_id] + [""] * (len(header) - 2) + [",".join(selected_tracks)]
+            worksheet.append_row(new_row)
+            print(f"✅ Saved track selection for new user {user_id}: {','.join(selected_tracks)}")
             return True
         
         # Update the "Selected Tracks" column
@@ -102,7 +104,7 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
         # Update the cell
         worksheet.update_cell(user_row, col_index, tracks_str)
         
-        print(f"✅ Saved track selection for user {user_id}: {tracks_str}")
+        print(f"✅ Updated track selection for user {user_id}: {tracks_str}")
         return True
         
     except Exception as e:

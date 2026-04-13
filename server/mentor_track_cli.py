@@ -112,7 +112,8 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
                 from slack_sdk import WebClient
                 slack_client = WebClient(token=os.getenv("SLACK_BOT_TOKEN_HNG14"))
                 user_info = slack_client.users_info(user=user_id)
-                display_name = user_info['user'].get('real_name', '')
+                # Use display_name first, fall back to real_name
+                display_name = user_info['user'].get('profile', {}).get('display_name', '') or user_info['user'].get('real_name', '')
                 email = user_info['user'].get('profile', {}).get('email', '')
                 
                 # Append: Timestamp, Slack ID, Display Name, Email, Selected Tracks

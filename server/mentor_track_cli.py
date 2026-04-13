@@ -104,8 +104,19 @@ def save_track_selection(user_id: str, selected_tracks: List[str]) -> bool:
         # If user not found, add them to the sheet
         if user_row is None:
             try:
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 tracks_str = ",".join(selected_tracks)
-                worksheet.append_row([user_id, "", "", "", tracks_str])
+                
+                # Get user display name from Slack if possible
+                from slack_sdk import WebClient
+                slack_client = WebClient(token=os.getenv("SLACK_BOT_TOKEN_HNG14"))
+                user_info = slack_client.users_info(user=user_id)
+                display_name = user_info['user'].get('real_name', '')
+                email = user_info['user'].get('profile', {}).get('email', '')
+                
+                # Append: Timestamp, Slack ID, Display Name, Email, Selected Tracks
+                worksheet.append_row([timestamp, user_id, display_name, email, tracks_str])
                 logger.info(f"Added new mentor {user_id} with tracks: {tracks_str}")
                 return True
             except Exception as e:

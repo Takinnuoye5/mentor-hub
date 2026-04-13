@@ -124,6 +124,87 @@ sudo systemctl status hngbot
 
 The server requires a systemd service file pointing to your virtual environment and .env file. For details, see deployment documentation or your hosting provider's guides.
 
+## Automation - Scheduler
+
+### Scheduler Installation and Setup
+
+The scheduler automates stage channel creation and mentor assignment based on configurable intervals.
+
+**Setup on Server:**
+
+```bash
+# 1. Install scheduler (from project root)
+bash setup_scheduler.sh
+
+# 2. Verify cron job was installed
+crontab -l
+
+# 3. Check scheduler state file
+cat /home/ubuntu/mentor-hub/scripts/.scheduler_state.json
+```
+
+The setup script automatically:
+- Creates logs directory at `/home/ubuntu/mentor-hub/logs/`
+- Installs the hourly cron job
+- Sets proper permissions and ownership
+
+### Cron Job Setup for Hourly Scheduler Runs
+
+The scheduler runs automatically every hour via cron:
+
+```bash
+# Installed cron job (runs at the top of every hour)
+0 * * * * cd /home/ubuntu/mentor-hub/scripts && /home/ubuntu/mentor-hub/venv/bin/python scheduler.py
+```
+
+**Manual scheduler execution** (for testing or forcing immediate actions):
+
+```bash
+# Force create next stage immediately
+python scheduler.py --force-stage
+
+# Force add mentors to current stage immediately
+python scheduler.py --force-add
+
+# Normal run (checks conditions before acting)
+python scheduler.py
+```
+
+**Scheduler Behavior:**
+- **Stage Creation**: Creates new stage if 48 hours (2 days) have passed since last stage
+- **Mentor Sync**: Adds new mentors to channels if 24 hours have passed since last sync
+- **State Tracking**: Maintains `.scheduler_state.json` with timestamps and stage numbers
+- **Subprocess Execution**: Runs existing scripts (`create_stage_channels.py`, `add_mentors_to_existing_stage.py`) as transparent subprocesses
+
+### Timeline for Automatic Stage 4, Stage 5 Creation
+
+Stages are created automatically on the following schedule (48-hour intervals from previous stage creation):
+
+| Stage | Auto-Create Date | Trigger Condition |
+|-------|------------------|-------------------|
+| Stage 1 | Manual | Created manually |
+| Stage 2 | Manual | Created manually |
+| Stage 3 | Apr 13, 2026 | Created manually (now) |
+| **Stage 4** | **Apr 15, 2026** | Automatically created 48 hours after Stage 3 |
+| **Stage 5** | **Apr 17, 2026** | Automatically created 48 hours after Stage 4 |
+| **Stage 6** | **Apr 19, 2026** | Automatically created 48 hours after Stage 5 |
+| ... | ... | Continues every 2 days |
+
+**How It Works:**
+1. State file records `last_stage_created` timestamp for each stage
+2. Hourly scheduler checks if 48 hours have elapsed
+3. When threshold is met, scheduler creates the next stage number automatically
+4. All mentors are synced to new channels within 24 hours
+
+**Example State File:**
+```json
+{
+  "last_stage_created": "2026-04-13T14:30:00.123456",
+  "last_stage_number": 3,
+  "last_mentor_sync": "2026-04-13T14:30:00.123456"
+}
+```
+
 ## API Endpoints
 
 ### Health Checks

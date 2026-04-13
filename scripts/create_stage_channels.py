@@ -740,9 +740,14 @@ def get_mentor_selections():
         mentors = []
         for record in records:
             # Extract data from record - different sheets might have different column names
-            user_id = record.get("Slack ID", "")
-            display_name = record.get("Display Name", record.get("Name", ""))
-            selected_tracks_str = record.get("Selected Tracks", "")
+            timestamp = record.get("Timestamp", "").strip()
+            user_id = record.get("Slack ID", "").strip()
+            display_name = record.get("Display Name", record.get("Name", "")).strip()
+            selected_tracks_str = record.get("Selected Tracks", "").strip()
+            
+            # Skip rows with missing timestamp (incomplete/malformed submissions)
+            if not timestamp:
+                continue
             
             print(f"DEBUG: Processing record: {display_name} | {user_id} | {selected_tracks_str}")
             
@@ -934,8 +939,7 @@ def add_mentors_to_stage_channels(stage_number, channels):
             print(f"📎 Adding additional user (U0AE8NEAD55) to all channels")
 
         added_main = add_users_to_channel(main_channel_id, mentor_ids, stage_name)
-        # Do not mention admin/oversight accounts
-        added_main = [uid for uid in added_main if uid not in {your_user_id, additional_user_id, additional_user_id_2}]
+        # Mention all successfully added members
         _notify_new_members(main_channel_id, added_main, stage_name, context="main channel")
     else:
         print(f"❌ Main channel ID for {stage_name} not found")

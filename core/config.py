@@ -17,7 +17,7 @@ CHANNEL_IDS = {
     "mentors": "C09BDFLLBLP",          # Main mentors channel
     "mentor_random": "C09ARQY34MB",    # Mentor random channel
     "announcements": "C09D5HEK1JN",    # Bot announcements channel
-    "admin_notifications": "C09D5HEK1JN"  # Admin notifications for track selections
+    "admin_notifications": ""  # Admin notifications for track selections
 }
 
 # System Settings

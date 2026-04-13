@@ -108,29 +108,30 @@ def should_sync_mentors(state):
 
 
 def create_next_stage(state):
-    """Create the next stage."""
+    """Create the next stage by running create_stage_channels.py directly."""
     try:
         next_stage = state["last_stage_number"] + 1
         logger.info(f"🚀 Creating stage {next_stage}...")
         
-        # Import and run create_stage_channels
-        try:
-            from create_stage_channels import create_stage_channels
-        except ImportError:
-            import sys
-            sys.path.insert(0, str(Path(__file__).parent))
-            from create_stage_channels import create_stage_channels
+        # Run the script the same way it's run manually: python create_stage_channels.py <stage_number>
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "create_stage_channels.py", str(next_stage)],
+            cwd=Path(__file__).parent,
+            capture_output=False,
+            timeout=600  # 10 minute timeout
+        )
         
-        # Run the stage creation
-        create_stage_channels(next_stage)
-        
-        # Update state
-        state["last_stage_created"] = datetime.now().isoformat()
-        state["last_stage_number"] = next_stage
-        save_state(state)
-        
-        logger.info(f"✅ Stage {next_stage} created successfully")
-        return True
+        if result.returncode == 0:
+            # Update state on success
+            state["last_stage_created"] = datetime.now().isoformat()
+            state["last_stage_number"] = next_stage
+            save_state(state)
+            logger.info(f"✅ Stage {next_stage} created successfully")
+            return True
+        else:
+            logger.error(f"❌ Failed to create stage {next_stage} (exit code: {result.returncode})")
+            return False
         
     except Exception as e:
         logger.error(f"❌ Failed to create stage: {e}", exc_info=True)
@@ -138,43 +139,34 @@ def create_next_stage(state):
 
 
 def sync_mentors_to_channels(state):
-    """Add new mentors to existing channels."""
+    """Add new mentors to existing channels by running add_mentors_to_existing_stage.py"""
     try:
         logger.info("🔄 Syncing mentors to channels...")
         
-        # Get the current stage number to sync
+        # Get the current stage number
         current_stage = state["last_stage_number"]
         if current_stage == 0:
             logger.warning("⚠️ No stages created yet, skipping mentor sync")
             return False
         
-        # Import and run add_mentors_to_existing_stage
-        try:
-            from add_mentors_to_existing_stage import process_incremental
-        except ImportError:
-            import sys
-            sys.path.insert(0, str(Path(__file__).parent))
-            from add_mentors_to_existing_stage import process_incremental
-        
-        # Run mentor sync for current stage (incremental mode - only processes new entries)
-        process_incremental(
-            current_stage,
-            dry_run=False,
-            process_all=False,
-            since_minutes=None,
-            reset_baseline=False,
-            show_baseline=False,
-            show_newest=False,
-            list_new=False,
-            baseline_mode="timestamp"
+        # Run the script the same way it's run manually: python add_mentors_to_existing_stage.py <stage_number>
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "add_mentors_to_existing_stage.py", str(current_stage)],
+            cwd=Path(__file__).parent,
+            capture_output=False,
+            timeout=600  # 10 minute timeout
         )
         
-        # Update state
-        state["last_mentor_sync"] = datetime.now().isoformat()
-        save_state(state)
-        
-        logger.info(f"✅ Mentors synced for stage {current_stage}")
-        return True
+        if result.returncode == 0:
+            # Update state on success
+            state["last_mentor_sync"] = datetime.now().isoformat()
+            save_state(state)
+            logger.info(f"✅ Mentors synced for stage {current_stage}")
+            return True
+        else:
+            logger.error(f"❌ Failed to sync mentors for stage {current_stage} (exit code: {result.returncode})")
+            return False
         
     except Exception as e:
         logger.error(f"❌ Failed to sync mentors: {e}", exc_info=True)

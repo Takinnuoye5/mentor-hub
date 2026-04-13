@@ -32,6 +32,9 @@ USER_TOKEN = os.getenv("SLACK_USER_TOKEN_HNG14")
 bot_client = WebClient(token=BOT_TOKEN)
 user_client = WebClient(token=USER_TOKEN)
 
+# Non-interactive mode flag (set by scheduler or other automation tools)
+NON_INTERACTIVE_MODE = False
+
 # Google Sheets configuration (imported from core.config)
 SPREADSHEET_NAME = GOOGLE_SPREADSHEET_NAME
 WORKSHEET_NAME = "Mentors"  # Will be set based on latest worksheet

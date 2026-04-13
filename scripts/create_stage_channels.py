@@ -695,17 +695,19 @@ def setup_google_sheets():
         # Get all worksheets
         all_worksheets = spreadsheet.worksheets()
 
-        # Find the latest worksheet by sorting names
-        mentor_sheets = [ws for ws in all_worksheets if ws.title.startswith("Mentors") and (ws.title == "Mentors" or ws.title[7] == " ")]
-        if not mentor_sheets:
-            print("❌ No mentor worksheets found")
+        # Find the static "Mentors" worksheet (NOT the dated ones)
+        worksheet = None
+        for ws in all_worksheets:
+            if ws.title == "Mentors":
+                worksheet = ws
+                break
+        
+        if not worksheet:
+            print("❌ Mentor worksheet 'Mentors' not found")
             return None, None
 
-        # Sort by date in the title
-        mentor_sheets.sort(key=lambda ws: ws.title, reverse=True)
-        worksheet = mentor_sheets[0]
         WORKSHEET_NAME = worksheet.title
-        print(f"✅ Using latest worksheet: {WORKSHEET_NAME}")
+        print(f"✅ Using worksheet: {WORKSHEET_NAME}")
     
         return spreadsheet, worksheet
     except Exception as e:

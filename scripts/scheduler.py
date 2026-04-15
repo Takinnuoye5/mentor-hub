@@ -26,6 +26,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ========================================
+# CONFIGURATION FLAGS
+# ========================================
+STAGE_CREATION_ENABLED = False  # Set to False to pause automatic stage creation (mentors will still sync)
+# ========================================
+
 # State file to track last executions
 STATE_FILE = Path(__file__).parent / ".scheduler_state.json"
 DEFAULT_STATE = {
@@ -119,7 +125,7 @@ def create_next_stage(state):
             [sys.executable, "create_stage_channels.py", str(next_stage)],
             cwd=Path(__file__).parent,
             capture_output=False,
-            timeout=600  # 10 minute timeout
+            timeout=1800  # 30 minute timeout (increased to handle large mentor batches and retries)
         )
         
         if result.returncode == 0:
@@ -187,19 +193,21 @@ def main():
     state = load_state()
     logger.info(f"Current state: {state}")
     
-    # Check and create stage if needed
-    if force_stage or should_create_stage(state):
+    # Check and create stage if needed (but only if enabled)
+    if not STAGE_CREATION_ENABLED and not force_stage:
+        logger.info("⏸️ Stage creation DISABLED (waiting for manual approval)")
+    elif force_stage or should_create_stage(state):
         logger.info("🎬 Stage creation check: TRIGGERED")
         create_next_stage(state)
     else:
-        logger.info("⏸️ Stage creation check: NOT YET")
+        logger.info("⏳ Stage creation check: NOT YET")
     
-    # Check and sync mentors if needed
+    # Check and sync mentors if needed (ALWAYS ENABLED)
     if force_add or should_sync_mentors(state):
         logger.info("👥 Mentor sync check: TRIGGERED")
         sync_mentors_to_channels(state)
     else:
-        logger.info("⏸️ Mentor sync check: NOT YET")
+        logger.info("⏳ Mentor sync check: NOT YET")
     
     logger.info("=" * 60)
     logger.info("Scheduler completed")

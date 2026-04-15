@@ -10,9 +10,18 @@ from typing import List, Optional, Dict
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from dotenv import load_dotenv
+from pathlib import Path
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-load_dotenv()
+# Load .env from project root, not current working directory
+load_dotenv(dotenv_path=str(Path(__file__).parent.parent / '.env'))
+
+# Debug: Check what was loaded
+env_path = str(Path(__file__).parent.parent / '.env')
+print(f"DEBUG: Loading .env from: {env_path}")
+print(f"DEBUG: File exists: {os.path.exists(env_path)}")
+google_creds_env = os.getenv("GOOGLE_CREDENTIALS_FILE")
+print(f"DEBUG: After load_dotenv, GOOGLE_CREDENTIALS_FILE = {google_creds_env}")
 
 # Import core modules
 try:
@@ -577,7 +586,7 @@ def add_users_to_channel(channel_id, user_ids, channel_name, batch_size=10, max_
                     # Try to add the bot to the channel using the user token
                     try:
                         bot_id = bot_client.auth_test()["user_id"]
-                        user_client.conversations_invite(channel=channel_id, users=bot_id)
+                        user_client.conversations_invite(channel=channel_id, users=[bot_id])
                         print(f"   ✅ Added bot to channel {channel_name}, retrying...")
                         # Now try again to add users
                         users_param = ",".join(batch)
@@ -606,6 +615,11 @@ def add_users_to_channel(channel_id, user_ids, channel_name, batch_size=10, max_
                         print(f"   ❌ Could not unarchive channel {channel_name}: {str(e)}")
                         return
                 else:
+                    # Check if it's a user_not_found error (non-retriable)
+                    if "user_not_found" in err:
+                        print(f"   ⚠️ One or more users in batch {batch_num} not found in Slack workspace - skipping this batch")
+                        failed_count += len(batch)
+                        break  # Don't retry, user doesn't exist
                     # Try with user token if bot token fails
                     try:
                         print(f"   ⚠️ Bot failed to add users - trying with user token...")
@@ -616,6 +630,12 @@ def add_users_to_channel(channel_id, user_ids, channel_name, batch_size=10, max_
                         print(f"   ➕ Added batch {batch_num}/{len(batches)} with user token: {len(batch)} users to {channel_name}")
                         break  # Success with user token, no need to retry
                     except Exception as e2:
+                        # Check again for user_not_found in the second attempt
+                        e2_str = str(e2)
+                        if "user_not_found" in e2_str:
+                            print(f"   ⚠️ One or more users in batch {batch_num} not found in Slack (with user token) - skipping")
+                            failed_count += len(batch)
+                            break
                         # Both tokens failed, retry with bot token
                         retry_count += 1
                         if retry_count <= max_retries:
@@ -677,6 +697,9 @@ def setup_google_sheets():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
+    
+    print(f"DEBUG: GOOGLE_CREDENTIALS_FILE = {GOOGLE_CREDENTIALS_FILE}")
+    print(f"DEBUG: File exists = {os.path.exists(GOOGLE_CREDENTIALS_FILE) if GOOGLE_CREDENTIALS_FILE else 'N/A'}")
     
     try:
         credentials = ServiceAccountCredentials.from_json_keyfile_name(
@@ -989,32 +1012,43 @@ def add_mentors_to_stage_channels(stage_number, channels):
         _notify_new_members(ch_id, ids, ch_name)
 
     # Add your user ID and additional users to all track channels
-    print(f"\n📌 Adding you (U09C0AAHT0Q) and additional users (U09LDCKAFJ6, U09B9SJPLFK) to all track channels...")
+    print(f"\n📌 Adding admin users to all track channels...")
+    admin_users = [
+        (your_user_id, "U09C0AAHT0Q (You)"),
+        (additional_user_id, "U09LDCKAFJ6"),
+        (additional_user_id_2, "U09B9SJPLFK"),
+        (additional_user_id_3, "U09BBMQG3NG"),
+        (additional_user_id_4, "U0AEQ5WLNSE"),
+        (additional_user_id_5, "U0AFJEN4HPA"),
+        (additional_user_id_6, "U0AE8NEAD55"),
+    ]
+    
+    admin_mentions_map: Dict[str, List[str]] = {}
+    
     for track, channel_id in channels.items():
         if track != "main":
-            try:
-                # Add your user ID
-                add_users_to_channel(channel_id, [your_user_id], f"{stage_name}-{track}")
-                print(f"   ✅ Added you to {track} channel")
-                
-                # Add additional user IDs
-                add_users_to_channel(channel_id, [additional_user_id], f"{stage_name}-{track}")
-                print(f"   ✅ Added additional user (U09LDCKAFJ6) to {track} channel")
-                add_users_to_channel(channel_id, [additional_user_id_2], f"{stage_name}-{track}")
-                print(f"   ✅ Added additional user (U09B9SJPLFK) to {track} channel")
-                add_users_to_channel(channel_id, [additional_user_id_4], f"{stage_name}-{track}")
-                print(f"   ✅ Added additional user (U0AEQ5WLNSE) to {track} channel")
-                add_users_to_channel(channel_id, [additional_user_id_5], f"{stage_name}-{track}")
-                print(f"   ✅ Added additional user (U0AFJEN4HPA) to {track} channel")
-                add_users_to_channel(channel_id, [additional_user_id_6], f"{stage_name}-{track}")
-                print(f"   ✅ Added additional user (U0AE8NEAD55) to {track} channel")
-            except Exception as e:
-                print(f"   ❌ Error adding users to {track} channel: {str(e)}")
+            for admin_id, admin_label in admin_users:
+                added_ids = add_users_to_channel(channel_id, [admin_id], f"{stage_name}-{track}")
+                if added_ids:
+                    admin_mentions_map.setdefault(channel_id, []).extend(added_ids)
+                    print(f"   ✅ Added admin user ({admin_label}) to {track} channel")
+    
+    # Post mentions for newly added admin users in each track channel
+    for ch_id, ids in admin_mentions_map.items():
+        ch_name = None
+        for track, c_id in channels.items():
+            if c_id == ch_id and track != "main":
+                ch_name = f"{stage_name}-{track}"
+                break
+        if ch_name:
+            _notify_new_members(ch_id, ids, ch_name)
     
     print(f"\n🎯 Mentor Addition Summary:")
     print(f"   ✅ Added {mentors_added} mentors to their selected track channels")
     print(f"   ✅ Made {total_additions} total channel additions")
-    print(f"   👑 Added you (U09C0AAHT0Q) and additional users (U09LDCKAFJ6, U09B9SJPLFK, U0AEQ5WLNSE, U0AFJEN4HPA, U0AE8NEAD55) to all channels")
+    print(f"   ✅ Each mentor was added to the main {stage_name} channel AND to their selected track channels")
+    print(f"   👑 Added 7 admin users (U09C0AAHT0Q, U09LDCKAFJ6, U09B9SJPLFK, U09BBMQG3NG, U0AEQ5WLNSE, U0AFJEN4HPA, U0AE8NEAD55) to all channels")
+    print(f"   📢 All newly added members were mentioned in their respective channels")
 
 
 if __name__ == "__main__":

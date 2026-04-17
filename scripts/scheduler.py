@@ -42,7 +42,7 @@ DEFAULT_STATE = {
 
 # Interval settings (in hours)
 STAGE_CREATION_INTERVAL = 48  # 2 days = 48 hours
-MENTOR_SYNC_INTERVAL = 24    # 1 day = 24 hours
+MENTOR_SYNC_INTERVAL = 1    # 1 hour (syncs mentors every hour)
 
 
 def load_state():

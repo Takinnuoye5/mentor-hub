@@ -145,9 +145,9 @@ def create_next_stage(state):
 
 
 def sync_mentors_to_channels(state):
-    """Add new mentors to existing channels by running add_mentors_to_existing_stage.py"""
+    """Add new mentors to ALL existing stage channels by running add_mentors_to_existing_stage.py"""
     try:
-        logger.info("🔄 Syncing mentors to channels...")
+        logger.info("🔄 Syncing mentors to all stage channels...")
         
         # Get the current stage number
         current_stage = state["last_stage_number"]
@@ -155,23 +155,35 @@ def sync_mentors_to_channels(state):
             logger.warning("⚠️ No stages created yet, skipping mentor sync")
             return False
         
-        # Run the script the same way it's run manually: python add_mentors_to_existing_stage.py <stage_number>
+        # Sync mentors to ALL existing stages (1 through current)
         import subprocess
-        result = subprocess.run(
-            [sys.executable, "add_mentors_to_existing_stage.py", str(current_stage)],
-            cwd=Path(__file__).parent,
-            capture_output=False,
-            timeout=600  # 10 minute timeout
-        )
+        all_success = True
         
-        if result.returncode == 0:
+        for stage_num in range(1, current_stage + 1):
+            logger.info(f"  → Syncing mentors to stage-{stage_num}...")
+            result = subprocess.run(
+                [sys.executable, "add_mentors_to_existing_stage.py", str(stage_num)],
+                cwd=Path(__file__).parent,
+                capture_output=False,
+                timeout=600  # 10 minute timeout per stage
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"❌ Failed to sync mentors for stage {stage_num} (exit code: {result.returncode})")
+                all_success = False
+            else:
+                logger.info(f"✅ Mentors synced for stage-{stage_num}")
+        
+        if all_success:
             # Update state on success
             state["last_mentor_sync"] = datetime.now().isoformat()
             save_state(state)
-            logger.info(f"✅ Mentors synced for stage {current_stage}")
+            logger.info(f"✅ All mentors synced to stages 1-{current_stage}")
             return True
         else:
-            logger.error(f"❌ Failed to sync mentors for stage {current_stage} (exit code: {result.returncode})")
+            logger.warning(f"⚠️ Mentor sync completed with some errors for stages 1-{current_stage}")
+            state["last_mentor_sync"] = datetime.now().isoformat()
+            save_state(state)
             return False
         
     except Exception as e:

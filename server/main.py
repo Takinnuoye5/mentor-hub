@@ -441,12 +441,14 @@ def _handle_update_confirmation(user_id: str, action_type: str, response_url: st
             final_tracks = combined_tracks
             # Only sync NEW tracks (ones not already in existing)
             tracks_to_sync = list(set(new_tracks) - set(existing_tracks))
+            sync_mode = "update"  # For ADD: only sync new tracks
         else:  # replace
             # Use only new tracks
             logger.info(f"Update REPLACE: {user_id} will have tracks {new_tracks}")
             final_tracks = new_tracks
-            # Sync all tracks for replace (in case changing between tracks)
+            # Sync all tracks for replace (they're completely changing tracks)
             tracks_to_sync = final_tracks
+            sync_mode = "new"  # For REPLACE: treat like new submission
         
         # Save tracks
         if save_track_selection(user_id, final_tracks):
@@ -500,13 +502,13 @@ Selected Tracks: {', '.join(readable)}
                 logger.error(f"DM error: {e}")
             
             # 🚀 INSTANT MENTOR SYNC
-            # For ADD: only sync new tracks (mentor already in existing channels)
-            # For REPLACE: sync all tracks
-            logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {tracks_to_sync}")
+            # For ADD: only sync new tracks (mentor already in existing channels) - use direct API
+            # For REPLACE: sync all tracks using script approach like new submission
+            logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {tracks_to_sync} (mode: {sync_mode})")
             if tracks_to_sync:
-                _trigger_instant_mentor_sync(user_id, tracks_to_sync)
+                _trigger_instant_mentor_sync(user_id, tracks_to_sync, sync_mode=sync_mode)
             else:
-                logger.info(f"No new tracks to sync for {user_id} (all tracks already assigned)")
+                logger.info(f"No tracks to sync for {user_id}")
             
             # Notify admin
             notify_admin_channel(user_id, final_tracks, is_update=True)
@@ -519,9 +521,16 @@ Selected Tracks: {', '.join(readable)}
 
 
 
-def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> None:
+def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_mode: str = "new") -> None:
     """
-    Trigger instant mentor sync to specific track channels.
+    Trigger instant mentor sync to track channels.
+    
+    Args:
+        user_id: Slack user ID
+        selected_tracks: List of tracks to sync to
+        sync_mode: "new" for initial submission (sync to ALL tracks), 
+                   "update" for adding new tracks only
+    
     This runs in a background thread and adds the mentor immediately.
     """
     def _sync():
@@ -545,24 +554,42 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> No
                 logger.warning("No stages created yet, skipping instant mentor sync")
                 return
             
-            logger.info(f"🚀 Syncing mentor {user_id} to {selected_tracks} channels immediately...")
+            logger.info(f"🚀 Syncing mentor {user_id} ({sync_mode} mode) to {selected_tracks} channels...")
             
-            # Track success/failure
-            successful_adds = 0
-            failed_adds = []
-            
-            # Add mentor to track channels for each stage
-            for stage_num in range(1, current_stage + 1):
-                for track in selected_tracks:
+            # For NEW submissions: use the reliable script-based approach
+            # For UPDATES: use direct API to only sync new tracks
+            if sync_mode == "new":
+                # New mentor - use script to add to all their selected tracks
+                import subprocess
+                scripts_dir = Path(__file__).parent.parent / "scripts"
+                for stage_num in range(1, current_stage + 1):
                     try:
-                        # Channel name format: stage-{stage_num}-{track}
-                        # e.g., stage-4-backend, stage-4-frontend
-                        channel_name = f"stage-{stage_num}-{track}"
-                        logger.info(f"  → Adding {user_id} to #{channel_name}...")
-                        
-                        # Try to convert channel name to channel ID by trying to access the channel
+                        logger.info(f"  → Running mentor sync script for stage-{stage_num}...")
+                        result = subprocess.run(
+                            [sys.executable, "add_mentors_to_existing_stage.py", str(stage_num), "--since-minutes", "1"],
+                            cwd=scripts_dir,
+                            capture_output=True,
+                            timeout=60
+                        )
+                        if result.returncode == 0:
+                            logger.info(f"  ✅ Mentor synced to stage-{stage_num}")
+                        else:
+                            logger.error(f"  ❌ Script failed for stage-{stage_num}: {result.stderr.decode()}")
+                    except Exception as e:
+                        logger.error(f"  ❌ Error running script for stage-{stage_num}: {e}")
+            
+            else:  # update mode
+                # Updating mentor - use direct API to add only NEW tracks
+                successful_adds = 0
+                failed_adds = []
+                
+                for stage_num in range(1, current_stage + 1):
+                    for track in selected_tracks:
                         try:
-                            # Try to find channel by name - search through conversations
+                            channel_name = f"stage-{stage_num}-{track}"
+                            logger.info(f"  → Adding {user_id} to #{channel_name}...")
+                            
+                            # Find channel by name
                             response = bot_client.conversations_list(limit=1000, exclude_archived=True)
                             channel_id = None
                             
@@ -573,39 +600,39 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> No
                             
                             if not channel_id:
                                 logger.warning(f"  ❌ Channel #{channel_name} not found")
-                                failed_adds.append((channel_name, "channel not found"))
+                                failed_adds.append((channel_name, "not found"))
                                 continue
                             
-                            # Invite mentor to channel
-                            bot_client.conversations_invite(channel=channel_id, users=[user_id])
-                            logger.info(f"  ✅ {user_id} added to #{channel_name}")
-                            successful_adds += 1
-                            
-                        except SlackApiError as e:
-                            error_code = e.response.get('error', '')
-                            if 'already_in_channel' in error_code:
-                                logger.info(f"  ℹ️  {user_id} already in #{channel_name}")
+                            # Invite mentor
+                            try:
+                                bot_client.conversations_invite(channel=channel_id, users=[user_id])
+                                logger.info(f"  ✅ {user_id} added to #{channel_name}")
                                 successful_adds += 1
-                            else:
-                                logger.warning(f"  ⚠️  Could not add {user_id} to #{channel_name}: {error_code}")
-                                failed_adds.append((channel_name, error_code))
-                    
-                    except Exception as e:
-                        logger.error(f"  ❌ Error processing {track} track: {e}")
-                        failed_adds.append((track, str(e)))
-            
-            if successful_adds > 0:
-                logger.info(f"✅ Added {user_id} to {successful_adds} channels")
-            if failed_adds:
-                logger.warning(f"⚠️  Failed to add {user_id} to {len(failed_adds)} channels: {failed_adds}")
+                            except SlackApiError as e:
+                                error_code = e.response.get('error', '')
+                                if 'already_in_channel' in error_code:
+                                    logger.info(f"  ℹ️  {user_id} already in #{channel_name}")
+                                    successful_adds += 1
+                                else:
+                                    logger.warning(f"  ⚠️  Could not add {user_id} to #{channel_name}: {error_code}")
+                                    failed_adds.append((channel_name, error_code))
+                        
+                        except Exception as e:
+                            logger.error(f"  ❌ Error processing {track}: {e}")
+                            failed_adds.append((track, str(e)))
+                
+                if successful_adds > 0:
+                    logger.info(f"✅ Added {user_id} to {successful_adds} channels")
+                if failed_adds:
+                    logger.warning(f"⚠️  Failed on {len(failed_adds)} channels: {failed_adds}")
                     
         except Exception as e:
             logger.error(f"Error in instant mentor sync: {e}", exc_info=True)
     
-    # Run sync in background thread so response isn't delayed
+    # Run sync in background thread
     sync_thread = threading.Thread(target=_sync, daemon=True)
     sync_thread.start()
-    logger.info(f"🚀 Instant mentor sync triggered for {user_id} - tracks: {selected_tracks}")
+    logger.info(f"🚀 Instant mentor sync ({sync_mode}) triggered for {user_id} - tracks: {selected_tracks}")
 
 
 def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
@@ -742,7 +769,7 @@ Selected Tracks: {', '.join(readable)}
         
         # 🚀 INSTANT MENTOR SYNC
         logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {tracks}")
-        _trigger_instant_mentor_sync(user_id, tracks)
+        _trigger_instant_mentor_sync(user_id, tracks, sync_mode="new")
         
         # Notify admin
         notify_admin_channel(user_id, tracks, is_update)

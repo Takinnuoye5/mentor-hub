@@ -380,6 +380,11 @@ async def handle_interactive_components(request: Request) -> JSONResponse:
 def _process_action(action_id: str, payload: Dict[str, Any]) -> None:
     """Process interactive action in background"""
     user_id = payload.get("user", {}).get("id", "")
+    response_url = payload.get("response_url", "")
+    
+    # Store response URL for this interaction
+    if response_url:
+        response_urls[user_id] = response_url
     
     try:
         if action_id == "track_checkboxes":
@@ -393,16 +398,16 @@ def _process_action(action_id: str, payload: Dict[str, Any]) -> None:
             _process_submission(user_id, payload)
         
         elif action_id == "confirm_update_add":
-            _handle_update_confirmation(user_id, "add")
+            _handle_update_confirmation(user_id, "add", response_url)
         
         elif action_id == "confirm_update_replace":
-            _handle_update_confirmation(user_id, "replace")
+            _handle_update_confirmation(user_id, "replace", response_url)
     
     except Exception as e:
         logger.error(f"Error processing action: {e}")
 
 
-def _handle_update_confirmation(user_id: str, action_type: str) -> None:
+def _handle_update_confirmation(user_id: str, action_type: str, response_url: str = "") -> None:
     """Handle the confirmation of track update (add or replace)"""
     try:
         # Get pending update data
@@ -418,6 +423,10 @@ def _handle_update_confirmation(user_id: str, action_type: str) -> None:
         new_tracks = pending['new_tracks']
         existing_tracks = pending['existing_tracks']
         payload = pending['payload']
+        
+        # Use button click response_url if available, otherwise use stored one
+        if not response_url:
+            response_url = payload.get("response_url", "")
         
         try:
             from server.mentor_track_cli import save_track_selection, get_mentor_existing_tracks
@@ -445,10 +454,16 @@ def _handle_update_confirmation(user_id: str, action_type: str) -> None:
                 {"type": "section", "text": {"type": "mrkdwn", "text": f"Your tracks have been {action_msg}: *{', '.join(readable)}*"}}
             ]
             
-            update_slack_message(user_id, blocks, "✅ Updated", 
-                               payload.get("channel", {}).get("id"), 
-                               payload.get("container", {}).get("message_ts"),
-                               payload.get("response_url"))
+            # Update the confirmation dialog with the success message
+            if response_url:
+                try:
+                    requests.post(response_url, json={
+                        "replace_original": True,
+                        "text": "✅ Track selection updated",
+                        "blocks": blocks
+                    }, timeout=API_REQUEST_TIMEOUT)
+                except Exception as e:
+                    logger.error(f"Error updating confirmation dialog: {e}")
             
             # Send DM
             try:

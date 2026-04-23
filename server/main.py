@@ -579,81 +579,109 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                         logger.error(f"  ❌ Error running script for stage-{stage_num}: {e}")
             
             else:  # update mode
-                # Updating mentor - use direct API to add to BOTH general stage AND new track channels
+                # Updating mentor - use direct API to add to ALL stages with their tracks
+                # Find all stages that have channels for the mentor's selected tracks
                 successful_adds = 0
                 failed_adds = []
                 
-                for stage_num in range(1, current_stage + 1):
-                    # First, add to the general stage channel (stage-1, stage-2, etc.)
-                    general_channel_name = f"stage-{stage_num}"
-                    try:
-                        logger.info(f"  → Adding {user_id} to #{general_channel_name}...")
-                        response = bot_client.conversations_list(limit=1000, exclude_archived=True)
-                        channel_id = None
-                        
-                        for ch in response.get('channels', []):
-                            if ch['name'] == general_channel_name:
-                                channel_id = ch['id']
-                                break
-                        
-                        if channel_id:
-                            try:
-                                bot_client.conversations_invite(channel=channel_id, users=[user_id])
-                                logger.info(f"  ✅ {user_id} added to #{general_channel_name}")
-                                successful_adds += 1
-                            except SlackApiError as e:
-                                error_code = e.response.get('error', '')
-                                if 'already_in_channel' in error_code:
-                                    logger.info(f"  ℹ️  {user_id} already in #{general_channel_name}")
-                                    successful_adds += 1
-                                else:
-                                    logger.warning(f"  ⚠️  Could not add {user_id} to #{general_channel_name}: {error_code}")
-                                    failed_adds.append((general_channel_name, error_code))
-                        else:
-                            logger.warning(f"  ❌ Channel #{general_channel_name} not found")
-                            failed_adds.append((general_channel_name, "not found"))
+                try:
+                    # Get all channels
+                    all_channels_response = bot_client.conversations_list(limit=1000, exclude_archived=True)
+                    all_channels = all_channels_response.get('channels', [])
                     
-                    except Exception as e:
-                        logger.error(f"  ❌ Error adding to general stage {stage_num}: {e}")
-                        failed_adds.append((general_channel_name, str(e)))
-                    
-                    # Then, add to track-specific channels
+                    # Find all stages that have the mentor's track channels
+                    stages_to_add = set()
                     for track in selected_tracks:
+                        for ch in all_channels:
+                            # Look for channels matching stage-*-{track}
+                            if ch['name'].endswith(f"-{track}") and ch['name'].startswith("stage-"):
+                                # Extract stage number from "stage-2-backend" -> "2"
+                                parts = ch['name'].split('-')
+                                if len(parts) >= 2 and parts[0] == "stage":
+                                    try:
+                                        stage_num = int(parts[1])
+                                        stages_to_add.add(stage_num)
+                                    except ValueError:
+                                        pass
+                    
+                    if not stages_to_add:
+                        logger.warning(f"No stages found with tracks {selected_tracks}")
+                        return
+                    
+                    logger.info(f"Found stages for mentor's tracks: {sorted(stages_to_add)}")
+                    
+                    # Add mentor to all found stages
+                    for stage_num in sorted(stages_to_add):
+                        # First, add to the general stage channel (stage-1, stage-2, etc.)
+                        general_channel_name = f"stage-{stage_num}"
                         try:
-                            channel_name = f"stage-{stage_num}-{track}"
-                            logger.info(f"  → Adding {user_id} to #{channel_name}...")
-                            
-                            # Find channel by name
-                            response = bot_client.conversations_list(limit=1000, exclude_archived=True)
+                            logger.info(f"  → Adding {user_id} to #{general_channel_name}...")
                             channel_id = None
                             
-                            for ch in response.get('channels', []):
-                                if ch['name'] == channel_name:
+                            for ch in all_channels:
+                                if ch['name'] == general_channel_name:
                                     channel_id = ch['id']
                                     break
                             
-                            if not channel_id:
-                                logger.warning(f"  ❌ Channel #{channel_name} not found")
-                                failed_adds.append((channel_name, "not found"))
-                                continue
-                            
-                            # Invite mentor
-                            try:
-                                bot_client.conversations_invite(channel=channel_id, users=[user_id])
-                                logger.info(f"  ✅ {user_id} added to #{channel_name}")
-                                successful_adds += 1
-                            except SlackApiError as e:
-                                error_code = e.response.get('error', '')
-                                if 'already_in_channel' in error_code:
-                                    logger.info(f"  ℹ️  {user_id} already in #{channel_name}")
+                            if channel_id:
+                                try:
+                                    bot_client.conversations_invite(channel=channel_id, users=[user_id])
+                                    logger.info(f"  ✅ {user_id} added to #{general_channel_name}")
                                     successful_adds += 1
-                                else:
-                                    logger.warning(f"  ⚠️  Could not add {user_id} to #{channel_name}: {error_code}")
-                                    failed_adds.append((channel_name, error_code))
+                                except SlackApiError as e:
+                                    error_code = e.response.get('error', '')
+                                    if 'already_in_channel' in error_code:
+                                        logger.info(f"  ℹ️  {user_id} already in #{general_channel_name}")
+                                        successful_adds += 1
+                                    else:
+                                        logger.warning(f"  ⚠️  Could not add {user_id} to #{general_channel_name}: {error_code}")
+                                        failed_adds.append((general_channel_name, error_code))
+                            else:
+                                logger.warning(f"  ❌ Channel #{general_channel_name} not found")
+                                failed_adds.append((general_channel_name, "not found"))
                         
                         except Exception as e:
-                            logger.error(f"  ❌ Error processing {track}: {e}")
-                            failed_adds.append((track, str(e)))
+                            logger.error(f"  ❌ Error adding to general stage {stage_num}: {e}")
+                            failed_adds.append((general_channel_name, str(e)))
+                        
+                        # Then, add to track-specific channels
+                        for track in selected_tracks:
+                            try:
+                                channel_name = f"stage-{stage_num}-{track}"
+                                logger.info(f"  → Adding {user_id} to #{channel_name}...")
+                                
+                                # Find channel by name
+                                channel_id = None
+                                for ch in all_channels:
+                                    if ch['name'] == channel_name:
+                                        channel_id = ch['id']
+                                        break
+                                
+                                if not channel_id:
+                                    logger.warning(f"  ❌ Channel #{channel_name} not found")
+                                    failed_adds.append((channel_name, "not found"))
+                                    continue
+                                
+                                # Invite mentor
+                                try:
+                                    bot_client.conversations_invite(channel=channel_id, users=[user_id])
+                                    logger.info(f"  ✅ {user_id} added to #{channel_name}")
+                                    successful_adds += 1
+                                except SlackApiError as e:
+                                    error_code = e.response.get('error', '')
+                                    if 'already_in_channel' in error_code:
+                                        logger.info(f"  ℹ️  {user_id} already in #{channel_name}")
+                                        successful_adds += 1
+                                    else:
+                                        logger.warning(f"  ⚠️  Could not add {user_id} to #{channel_name}: {error_code}")
+                                        failed_adds.append((channel_name, error_code))
+                            
+                            except Exception as e:
+                                logger.error(f"  ❌ Error processing {track}: {e}")
+                                failed_adds.append((track, str(e)))
+                
+                except Exception as e:
+                    logger.error(f"Error getting channels list: {e}")
                 
                 if successful_adds > 0:
                     logger.info(f"✅ Added {user_id} to {successful_adds} channels")

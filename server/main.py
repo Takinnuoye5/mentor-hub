@@ -439,10 +439,14 @@ def _handle_update_confirmation(user_id: str, action_type: str, response_url: st
             combined_tracks.sort()
             logger.info(f"Update ADD: {user_id} will have tracks {combined_tracks}")
             final_tracks = combined_tracks
+            # Only sync NEW tracks (ones not already in existing)
+            tracks_to_sync = list(set(new_tracks) - set(existing_tracks))
         else:  # replace
             # Use only new tracks
             logger.info(f"Update REPLACE: {user_id} will have tracks {new_tracks}")
             final_tracks = new_tracks
+            # Sync all tracks for replace (in case changing between tracks)
+            tracks_to_sync = final_tracks
         
         # Save tracks
         if save_track_selection(user_id, final_tracks):
@@ -470,11 +474,20 @@ def _handle_update_confirmation(user_id: str, action_type: str, response_url: st
                 if not TESTING_MODE:
                     dm = bot_client.conversations_open(users=user_id)
                     if action_type == "add":
-                        message = f"""✅ Your track selection has been updated (tracks added).
+                        tracks_to_sync_readable = [track_id_to_display_name(t) for t in tracks_to_sync]
+                        if tracks_to_sync:
+                            message = f"""✅ Your track selection has been updated (tracks added).
 
+New tracks added: {', '.join(tracks_to_sync_readable)}
 All your tracks: {', '.join(readable)}
 
-🚀 You will be added to all stage channels for these tracks! Thank you for mentoring with HNG!"""
+🚀 You will be added to all stage channels for the new track(s)! Thank you for mentoring with HNG!"""
+                        else:
+                            message = f"""✅ Your track selection was already complete.
+
+Your tracks: {', '.join(readable)}
+
+Thank you for mentoring with HNG!"""
                     else:
                         message = f"""✅ Your track selection has been changed.
 
@@ -487,8 +500,13 @@ Selected Tracks: {', '.join(readable)}
                 logger.error(f"DM error: {e}")
             
             # 🚀 INSTANT MENTOR SYNC
-            logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {final_tracks}")
-            _trigger_instant_mentor_sync(user_id, final_tracks)
+            # For ADD: only sync new tracks (mentor already in existing channels)
+            # For REPLACE: sync all tracks
+            logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {tracks_to_sync}")
+            if tracks_to_sync:
+                _trigger_instant_mentor_sync(user_id, tracks_to_sync)
+            else:
+                logger.info(f"No new tracks to sync for {user_id} (all tracks already assigned)")
             
             # Notify admin
             notify_admin_channel(user_id, final_tracks, is_update=True)

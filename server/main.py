@@ -603,12 +603,12 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                     
                     logger.info(f"Retrieved {len(all_channels)} channels from Slack")
                     
-                    # Find ALL existing stages (not just ones with track channels)
+                    # Find ALL existing stages (from both general and track channels)
                     all_stages = set()
                     for ch in all_channels:
-                        if ch['name'].startswith("stage-") and '-' in ch['name'][6:]:  # stage-N or stage-N-track
+                        if ch['name'].startswith("stage-"):
                             parts = ch['name'].split('-')
-                            if len(parts) >= 2:
+                            if len(parts) >= 2:  # At least "stage-N"
                                 try:
                                     stage_num = int(parts[1])
                                     all_stages.add(stage_num)

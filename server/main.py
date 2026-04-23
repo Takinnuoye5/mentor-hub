@@ -521,13 +521,12 @@ Selected Tracks: {', '.join(readable)}
 
 def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> None:
     """
-    Trigger instant mentor sync to all existing stage channels.
+    Trigger instant mentor sync to specific track channels.
     This runs in a background thread and adds the mentor immediately.
     """
     def _sync():
         try:
             import json
-            import subprocess
             from pathlib import Path
             
             # Get scheduler state to find current stage
@@ -546,35 +545,68 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> No
                 logger.warning("No stages created yet, skipping instant mentor sync")
                 return
             
-            logger.info(f"🚀 Syncing mentor {user_id} to stages 1-{current_stage} immediately...")
+            logger.info(f"🚀 Syncing mentor {user_id} to {selected_tracks} channels immediately...")
             
-            # Run mentor sync for each stage (1 through current)
-            scripts_dir = Path(__file__).parent.parent / "scripts"
+            # Track success/failure
+            successful_adds = 0
+            failed_adds = []
+            
+            # Add mentor to track channels for each stage
             for stage_num in range(1, current_stage + 1):
-                try:
-                    logger.info(f"  → Adding mentor to stage-{stage_num} channels...")
-                    result = subprocess.run(
-                        [sys.executable, "add_mentors_to_existing_stage.py", str(stage_num), "--since-minutes", "1"],
-                        cwd=scripts_dir,
-                        capture_output=True,
-                        timeout=60  # 60 second timeout
-                    )
+                for track in selected_tracks:
+                    try:
+                        # Channel name format: stage-{stage_num}-{track}
+                        # e.g., stage-4-backend, stage-4-frontend
+                        channel_name = f"stage-{stage_num}-{track}"
+                        logger.info(f"  → Adding {user_id} to #{channel_name}...")
+                        
+                        # Try to convert channel name to channel ID by trying to access the channel
+                        try:
+                            # Try to find channel by name - search through conversations
+                            response = bot_client.conversations_list(limit=1000, exclude_archived=True)
+                            channel_id = None
+                            
+                            for ch in response.get('channels', []):
+                                if ch['name'] == channel_name:
+                                    channel_id = ch['id']
+                                    break
+                            
+                            if not channel_id:
+                                logger.warning(f"  ❌ Channel #{channel_name} not found")
+                                failed_adds.append((channel_name, "channel not found"))
+                                continue
+                            
+                            # Invite mentor to channel
+                            bot_client.conversations_invite(channel=channel_id, users=[user_id])
+                            logger.info(f"  ✅ {user_id} added to #{channel_name}")
+                            successful_adds += 1
+                            
+                        except SlackApiError as e:
+                            error_code = e.response.get('error', '')
+                            if 'already_in_channel' in error_code:
+                                logger.info(f"  ℹ️  {user_id} already in #{channel_name}")
+                                successful_adds += 1
+                            else:
+                                logger.warning(f"  ⚠️  Could not add {user_id} to #{channel_name}: {error_code}")
+                                failed_adds.append((channel_name, error_code))
                     
-                    if result.returncode == 0:
-                        logger.info(f"  ✅ Mentor added to stage-{stage_num}")
-                    else:
-                        logger.error(f"  ❌ Failed to add mentor to stage-{stage_num}: {result.stderr.decode()}")
-                except Exception as e:
-                    logger.error(f"  ❌ Error syncing mentor to stage-{stage_num}: {e}")
+                    except Exception as e:
+                        logger.error(f"  ❌ Error processing {track} track: {e}")
+                        failed_adds.append((track, str(e)))
             
-            logger.info(f"✅ Instant mentor sync completed for {user_id}")
+            if successful_adds > 0:
+                logger.info(f"✅ Added {user_id} to {successful_adds} channels")
+            if failed_adds:
+                logger.warning(f"⚠️  Failed to add {user_id} to {len(failed_adds)} channels: {failed_adds}")
+                    
         except Exception as e:
             logger.error(f"Error in instant mentor sync: {e}", exc_info=True)
     
     # Run sync in background thread so response isn't delayed
     sync_thread = threading.Thread(target=_sync, daemon=True)
     sync_thread.start()
-    logger.info(f"🚀 Instant mentor sync triggered in background for {user_id}")
+    logger.info(f"🚀 Instant mentor sync triggered for {user_id} - tracks: {selected_tracks}")
+
 
 def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
     """Process track submission - checks if mentor exists and shows confirmation if needed"""

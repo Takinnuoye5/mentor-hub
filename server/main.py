@@ -605,18 +605,30 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                     
                     # Find all stages that have the mentor's track channels
                     stages_to_add = set()
+                    
+                    # Log all stage channels for debugging
+                    stage_channels = {}
+                    for ch in all_channels:
+                        if ch['name'].startswith("stage-"):
+                            stage_channels[ch['name']] = ch['id']
+                    
+                    logger.info(f"Available stage channels ({len(stage_channels)}): {sorted(stage_channels.keys())}")
+                    logger.info(f"Looking for tracks: {selected_tracks}")
+                    
                     for track in selected_tracks:
-                        for ch in all_channels:
-                            # Look for channels matching stage-*-{track}
-                            if ch['name'].endswith(f"-{track}") and ch['name'].startswith("stage-"):
-                                # Extract stage number from "stage-2-backend" -> "2"
-                                parts = ch['name'].split('-')
-                                if len(parts) >= 2 and parts[0] == "stage":
-                                    try:
-                                        stage_num = int(parts[1])
-                                        stages_to_add.add(stage_num)
-                                    except ValueError:
-                                        pass
+                        matching_channels = [ch for ch in all_channels 
+                                            if ch['name'].endswith(f"-{track}") and ch['name'].startswith("stage-")]
+                        logger.info(f"  Track '{track}': Found {len(matching_channels)} channels: {[ch['name'] for ch in matching_channels]}")
+                        
+                        for ch in matching_channels:
+                            # Extract stage number from "stage-2-backend" -> "2"
+                            parts = ch['name'].split('-')
+                            if len(parts) >= 2 and parts[0] == "stage":
+                                try:
+                                    stage_num = int(parts[1])
+                                    stages_to_add.add(stage_num)
+                                except ValueError:
+                                    pass
                     
                     if not stages_to_add:
                         logger.warning(f"No stages found with tracks {selected_tracks}")

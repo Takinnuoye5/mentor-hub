@@ -298,16 +298,15 @@ async def handle_mentor_track_command(request: Request) -> Response:
         logger.debug(f"DEBUG: Allowed channels = {[MENTORS_CHANNEL_ID, MENTOR_RANDOM_CHANNEL_ID]}, Got channel_id = '{channel_id}'")
         
         # ✅ CHANNEL RESTRICTION: Only allow command in mentors and mentors-random channels
-        # TEMPORARILY DISABLED FOR DEBUGGING
-        # allowed_channels = [MENTORS_CHANNEL_ID, MENTOR_RANDOM_CHANNEL_ID]
-        # if channel_id not in allowed_channels:
-        #     error_message = f"""❌ The `/mentor-track` command can only be used in:
-        # • <#{MENTORS_CHANNEL_ID}> (mentors)
-        # • <#{MENTOR_RANDOM_CHANNEL_ID}> (mentors-random)
-        # 
-        # Please use the command in one of these channels."""
-        #     logger.warning(f"⚠️  User {user_id} tried /mentor-track in restricted channel {channel_id}")
-        #     return JSONResponse(content={"text": error_message}, status_code=200)
+        allowed_channels = [MENTORS_CHANNEL_ID, MENTOR_RANDOM_CHANNEL_ID]
+        if channel_id not in allowed_channels:
+            error_message = f"""❌ The `/mentor-track` command can only be used in:
+• <#{MENTORS_CHANNEL_ID}> (mentors)
+• <#{MENTOR_RANDOM_CHANNEL_ID}> (mentors-random)
+
+Please use the command in one of these channels."""
+            logger.warning(f"⚠️  User {user_id} tried /mentor-track in restricted channel {channel_id}")
+            return JSONResponse(content={"text": error_message}, status_code=200)
         
         if response_url:
             response_urls[user_id] = response_url

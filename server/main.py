@@ -559,10 +559,36 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
             # For NEW submissions: use the reliable script-based approach
             # For UPDATES: use direct API to only sync new tracks
             if sync_mode == "new":
-                # New mentor - use script to add to all their selected tracks
+                # New mentor - use script to add to ALL existing stages
                 import subprocess
                 scripts_dir = Path(__file__).parent.parent / "scripts"
-                for stage_num in range(1, current_stage + 1):
+                
+                # Get all existing stages
+                all_channels = []
+                cursor = None
+                while True:
+                    resp = bot_client.conversations_list(limit=1000, cursor=cursor, exclude_archived=True)
+                    all_channels.extend(resp.get('channels', []))
+                    cursor = resp.get('response_metadata', {}).get('next_cursor')
+                    if not cursor:
+                        break
+                
+                # Find all stage numbers
+                all_stages = set()
+                for ch in all_channels:
+                    if ch['name'].startswith('stage-'):
+                        parts = ch['name'].split('-')
+                        if len(parts) >= 2:
+                            try:
+                                stage_num = int(parts[1])
+                                all_stages.add(stage_num)
+                            except ValueError:
+                                pass
+                
+                logger.info(f"Found all stages: {sorted(all_stages)}")
+                
+                # Run script for all stages, not just current_stage
+                for stage_num in sorted(all_stages):
                     try:
                         logger.info(f"  → Running mentor sync script for stage-{stage_num}...")
                         result = subprocess.run(

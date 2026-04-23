@@ -585,9 +585,23 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                 failed_adds = []
                 
                 try:
-                    # Get all channels
-                    all_channels_response = bot_client.conversations_list(limit=1000, exclude_archived=True)
-                    all_channels = all_channels_response.get('channels', [])
+                    # Get ALL channels (with pagination)
+                    all_channels = []
+                    cursor = None
+                    while True:
+                        if cursor:
+                            response = bot_client.conversations_list(limit=1000, cursor=cursor, exclude_archived=True)
+                        else:
+                            response = bot_client.conversations_list(limit=1000, exclude_archived=True)
+                        
+                        all_channels.extend(response.get('channels', []))
+                        
+                        # Check for next page
+                        cursor = response.get('response_metadata', {}).get('next_cursor')
+                        if not cursor:
+                            break
+                    
+                    logger.info(f"Retrieved {len(all_channels)} channels from Slack")
                     
                     # Find all stages that have the mentor's track channels
                     stages_to_add = set()

@@ -15,8 +15,8 @@ load_dotenv(dotenv_path=str(Path(__file__).parent.parent / '.env'))
 
 # Slack Channel IDs
 CHANNEL_IDS = {
-    "mentors": "C09BDFLLBLP",          # Main mentors channel
-    "mentor_random": "C09ARQY34MB",    # Mentor random channel
+    "mentors": "C0AEHQ6QGUB",          # Main mentors channel
+    "mentor_random": "C0AFU2RH486",    # Mentor random channel
     "announcements": "C09D5HEK1JN",    # Bot announcements channel
     "admin_notifications": ""  # Admin notifications for track selections
 }

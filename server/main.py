@@ -630,6 +630,7 @@ def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
 def _show_update_confirmation_dialog(user_id: str, existing_tracks: List[str], new_tracks: List[str], payload: Dict[str, Any]) -> None:
     """Show a confirmation dialog for updating vs replacing tracks"""
     try:
+        response_url = payload.get("response_url", "")
         channel_id = payload.get("channel", {}).get("id")
         
         existing_readable = [track_id_to_display_name(t) for t in existing_tracks]
@@ -652,8 +653,23 @@ def _show_update_confirmation_dialog(user_id: str, existing_tracks: List[str], n
             ]}
         ]
         
-        bot_client.chat_postEphemeral(channel=channel_id, user=user_id, text="Track update confirmation", blocks=blocks)
-        logger.info(f"Sent update confirmation dialog to {user_id}")
+        # Update the original form message with the confirmation dialog
+        if response_url:
+            try:
+                requests.post(response_url, json={
+                    "replace_original": True,
+                    "text": "Track update confirmation",
+                    "blocks": blocks
+                }, timeout=API_REQUEST_TIMEOUT)
+                logger.info(f"Sent update confirmation dialog to {user_id}")
+            except Exception as e:
+                logger.error(f"Error posting confirmation via response_url: {e}")
+                # Fallback to ephemeral message if response_url fails
+                bot_client.chat_postEphemeral(channel=channel_id, user=user_id, text="Track update confirmation", blocks=blocks)
+        else:
+            # No response_url, fall back to ephemeral
+            bot_client.chat_postEphemeral(channel=channel_id, user=user_id, text="Track update confirmation", blocks=blocks)
+            logger.info(f"Sent update confirmation dialog to {user_id} (ephemeral fallback)")
     
     except Exception as e:
         logger.error(f"Error showing confirmation dialog: {e}")

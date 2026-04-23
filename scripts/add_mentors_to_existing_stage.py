@@ -29,10 +29,10 @@ import argparse
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+from pathlib import Path
 
-# Load .env for Slack tokens and optional GOOGLE_CREDENTIALS_FILE
-# Load .env for Slack tokens and optional GOOGLE_CREDENTIALS_FILE
-load_dotenv()
+# Load .env from project root, not current working directory
+load_dotenv(dotenv_path=str(Path(__file__).parent.parent / '.env'))
 
 try:
     from mentor_hub.scripts import create_stage_channels as csc
@@ -72,22 +72,28 @@ def build_stage_channels_map(stage_number: int):
     return channels
 
 
-STATE_FILE = "mentor_sheet_state.json"
+def _get_state_file(stage_number: int) -> str:
+    """Get stage-specific state file to track baseline per stage."""
+    return f"mentor_sheet_state_stage_{stage_number}.json"
 
 
-def _load_state() -> Dict[str, Any]:
+def _load_state(stage_number: int) -> Dict[str, Any]:
+    """Load stage-specific state."""
+    state_file = _get_state_file(stage_number)
     try:
-        if os.path.exists(STATE_FILE):
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
+        if os.path.exists(state_file):
+            with open(state_file, "r", encoding="utf-8") as f:
                 return json.load(f)
     except Exception:
         pass
     return {}
 
 
-def _save_state(state: Dict[str, Any]) -> None:
+def _save_state(state: Dict[str, Any], stage_number: int) -> None:
+    """Save stage-specific state."""
+    state_file = _get_state_file(stage_number)
     try:
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
+        with open(state_file, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
     except Exception as e:
         print(f"⚠️ Could not save state: {e}")
@@ -257,7 +263,7 @@ def process_incremental(
     records: List[Dict[str, Any]] = info["records"]
     max_ts: Optional[datetime] = info["max_ts"]
 
-    state = _load_state()
+    state = _load_state(stage)
 
     # Optional: show baseline for this worksheet and exit
     if show_baseline:
@@ -325,16 +331,16 @@ def process_incremental(
     if reset_baseline:
         if ws_title in state:
             del state[ws_title]
-            _save_state(state)
-            print(f"♻️ Reset baseline for '{ws_title}'. Next run will bootstrap again unless you use --process-all or --since-minutes.")
+            _save_state(state, stage)
+            print(f"♻️ Reset baseline for '{ws_title}' in stage-{stage}. Next run will bootstrap again unless you use --process-all or --since-minutes.")
         else:
             print(f"ℹ️ No baseline stored for '{ws_title}' to reset.")
         # Also clear row-baseline if present
         state_row_key = f"{ws_title}__row"
         if state_row_key in state:
             del state[state_row_key]
-            _save_state(state)
-            print(f"♻️ Reset row-baseline for '{ws_title}'.")
+            _save_state(state, stage)
+            print(f"♻️ Reset row-baseline for '{ws_title}' in stage-{stage}.")
         return
 
     # Determine effective baseline according to flags/state
@@ -358,8 +364,8 @@ def process_incremental(
             if baseline_row is None:
                 if last_data_row is not None:
                     state[state_row_key] = last_data_row
-                    _save_state(state)
-                    print(f"🧭 Bootstrap (row-mode): recorded baseline row {last_data_row} for '{ws_title}'.")
+                    _save_state(state, stage)
+                    print(f"🧭 Bootstrap (row-mode): recorded baseline row {last_data_row} for '{ws_title}' in stage-{stage}.")
                     print("   No mentors processed on the first run. Run again after new submissions.")
                 else:
                     print("⚠️ Could not determine last data row; nothing to bootstrap.")
@@ -380,8 +386,8 @@ def process_incremental(
                 # Bootstrap: record current max and exit to avoid processing the entire history
                 if max_ts is not None:
                     state[ws_title] = max_ts.strftime("%Y-%m-%d %H:%M:%S")
-                    _save_state(state)
-                    print(f"🧭 Bootstrap: recorded baseline {state[ws_title]} for '{ws_title}'.")
+                    _save_state(state, stage)
+                    print(f"🧭 Bootstrap (stage-{stage}): recorded baseline {state[ws_title]} for '{ws_title}'.")
                     _print_baseline_preview(ws_title, worksheet, records, max_ts)
                     print("   No mentors processed on the first run. Run again after new submissions.")
                 else:
@@ -533,13 +539,13 @@ def process_incremental(
         if not dry_run and max_row is not None:
             state_row_key = f"{ws_title}__row"
             state[state_row_key] = max_row
-            _save_state(state)
-            print(f"💾 Updated row-baseline to row {max_row} for '{ws_title}'.")
+            _save_state(state, stage)
+            print(f"💾 Updated row-baseline to row {max_row} for '{ws_title}' in stage-{stage}.")
     else:
         if not dry_run and recent_max and (last_ts is None or recent_max > last_ts):
             state[ws_title] = recent_max.strftime("%Y-%m-%d %H:%M:%S")
-            _save_state(state)
-            print(f"💾 Updated last processed timestamp to {state[ws_title]} for '{ws_title}'.")
+            _save_state(state, stage)
+            print(f"💾 Updated last processed timestamp to {state[ws_title]} for '{ws_title}' in stage-{stage}.")
             _print_baseline_preview(ws_title, worksheet, records, recent_max)
 
 

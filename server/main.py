@@ -10,6 +10,7 @@ Production-ready server with proper logging, security, and error handling.
 
 import logging
 import os
+import sys
 import json
 import time
 import threading
@@ -381,6 +382,63 @@ def _process_action(action_id: str, payload: Dict[str, Any]) -> None:
     except Exception as e:
         logger.error(f"Error processing action: {e}")
 
+def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> None:
+    """
+    Trigger instant mentor sync to all existing stage channels.
+    This runs in a background thread and adds the mentor immediately.
+    """
+    def _sync():
+        try:
+            import json
+            import subprocess
+            from pathlib import Path
+            
+            # Get scheduler state to find current stage
+            scheduler_state_file = Path(__file__).parent.parent / "scripts" / ".scheduler_state.json"
+            current_stage = 0
+            
+            if scheduler_state_file.exists():
+                try:
+                    with open(scheduler_state_file, 'r') as f:
+                        state = json.load(f)
+                        current_stage = state.get("last_stage_number", 0)
+                except Exception as e:
+                    logger.warning(f"Could not read scheduler state: {e}")
+            
+            if current_stage == 0:
+                logger.warning("No stages created yet, skipping instant mentor sync")
+                return
+            
+            logger.info(f"🚀 Syncing mentor {user_id} to stages 1-{current_stage} immediately...")
+            
+            # Run mentor sync for each stage (1 through current)
+            scripts_dir = Path(__file__).parent.parent / "scripts"
+            for stage_num in range(1, current_stage + 1):
+                try:
+                    logger.info(f"  → Adding mentor to stage-{stage_num} channels...")
+                    result = subprocess.run(
+                        [sys.executable, "add_mentors_to_existing_stage.py", str(stage_num), "--since-minutes", "1"],
+                        cwd=scripts_dir,
+                        capture_output=True,
+                        timeout=60  # 60 second timeout
+                    )
+                    
+                    if result.returncode == 0:
+                        logger.info(f"  ✅ Mentor added to stage-{stage_num}")
+                    else:
+                        logger.error(f"  ❌ Failed to add mentor to stage-{stage_num}: {result.stderr.decode()}")
+                except Exception as e:
+                    logger.error(f"  ❌ Error syncing mentor to stage-{stage_num}: {e}")
+            
+            logger.info(f"✅ Instant mentor sync completed for {user_id}")
+        except Exception as e:
+            logger.error(f"Error in instant mentor sync: {e}", exc_info=True)
+    
+    # Run sync in background thread so response isn't delayed
+    sync_thread = threading.Thread(target=_sync, daemon=True)
+    sync_thread.start()
+    logger.info(f"🚀 Instant mentor sync triggered in background for {user_id}")
+
 def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
     """Process track submission"""
     try:
@@ -428,10 +486,14 @@ def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
 
 Selected Tracks: {', '.join(readable)}
 
-You will be added to all stage channels for these tracks going forward. Thank you for mentoring with HNG!"""
+🚀 You will be added to all stage channels for these tracks right now! Thank you for mentoring with HNG!"""
                     bot_client.chat_postMessage(channel=dm["channel"]["id"], text=message)
             except Exception as e:
                 logger.error(f"DM error: {e}")
+            
+            # 🚀 INSTANT MENTOR SYNC: Add mentor to all existing stage channels immediately
+            logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {tracks}")
+            _trigger_instant_mentor_sync(user_id, tracks)
             
             # Notify admin
             is_update = check_if_mentor_exists(user_id)

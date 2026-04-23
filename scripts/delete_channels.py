@@ -5,11 +5,12 @@ Lists channels you're in and lets you select which ones to delete.
 """
 import os
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-load_dotenv()
+load_dotenv(dotenv_path=str(Path(__file__).parent.parent / '.env'))
 
 BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN_HNG14")
 USER_TOKEN = os.getenv("SLACK_USER_TOKEN_HNG14")

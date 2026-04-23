@@ -924,6 +924,15 @@ def add_mentors_to_stage_channels(stage_number, channels):
     additional_user_id_5 = "U0AFJEN4HPA"  # Additional user to add to all channels
     additional_user_id_6 = "U0AE8NEAD55"  # Additional user to add to all channels
     
+    # Resolve Thanos bot by username
+    all_users = fetch_all_users(max_retries=3, use_cache_file=True)
+    thanos_id = get_user_id_by_username("Thanos", all_users)
+    if thanos_id:
+        print(f"✅ Resolved Thanos bot: {thanos_id}")
+    else:
+        print(f"⚠️  Could not resolve Thanos bot username")
+        thanos_id = None
+    
     # Add all mentors to the main stage channel first
     main_channel_id = channels.get("main")
     if main_channel_id:
@@ -960,6 +969,11 @@ def add_mentors_to_stage_channels(stage_number, channels):
         if additional_user_id_6 not in mentor_ids:
             mentor_ids.append(additional_user_id_6)
             print(f"📎 Adding additional user (U0AE8NEAD55) to all channels")
+        
+        # Add Thanos bot if resolved
+        if thanos_id and thanos_id not in mentor_ids:
+            mentor_ids.append(thanos_id)
+            print(f"🤖 Adding Thanos bot to all channels")
 
         added_main = add_users_to_channel(main_channel_id, mentor_ids, stage_name)
         # Mention all successfully added members
@@ -1023,6 +1037,10 @@ def add_mentors_to_stage_channels(stage_number, channels):
         (additional_user_id_6, "U0AE8NEAD55"),
     ]
     
+    # Add Thanos bot to admin users if resolved
+    if thanos_id:
+        admin_users.append((thanos_id, "Thanos (Bot)"))
+    
     admin_mentions_map: Dict[str, List[str]] = {}
     
     for track, channel_id in channels.items():
@@ -1047,7 +1065,10 @@ def add_mentors_to_stage_channels(stage_number, channels):
     print(f"   ✅ Added {mentors_added} mentors to their selected track channels")
     print(f"   ✅ Made {total_additions} total channel additions")
     print(f"   ✅ Each mentor was added to the main {stage_name} channel AND to their selected track channels")
-    print(f"   👑 Added 7 admin users (U09C0AAHT0Q, U09LDCKAFJ6, U09B9SJPLFK, U09BBMQG3NG, U0AEQ5WLNSE, U0AFJEN4HPA, U0AE8NEAD55) to all channels")
+    admin_summary = "7 admin users (U09C0AAHT0Q, U09LDCKAFJ6, U09B9SJPLFK, U09BBMQG3NG, U0AEQ5WLNSE, U0AFJEN4HPA, U0AE8NEAD55)"
+    if thanos_id:
+        admin_summary += " + Thanos (Bot)"
+    print(f"   👑 Added {admin_summary} to all channels")
     print(f"   📢 All newly added members were mentioned in their respective channels")
 
 

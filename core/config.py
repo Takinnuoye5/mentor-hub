@@ -7,10 +7,11 @@ mentor track selection system. Environment variables override defaults.
 """
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env file
-load_dotenv()
+# Load .env from project root
+load_dotenv(dotenv_path=str(Path(__file__).parent.parent / '.env'))
 
 # Slack Channel IDs
 CHANNEL_IDS = {

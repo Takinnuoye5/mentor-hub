@@ -603,62 +603,27 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                     
                     logger.info(f"Retrieved {len(all_channels)} channels from Slack")
                     
-                    # Find all stage numbers that exist
-                    all_stage_numbers = set()
+                    # Find ALL existing stages (not just ones with track channels)
+                    all_stages = set()
                     for ch in all_channels:
-                        if ch['name'].startswith("stage-"):
+                        if ch['name'].startswith("stage-") and '-' in ch['name'][6:]:  # stage-N or stage-N-track
                             parts = ch['name'].split('-')
-                            if len(parts) >= 2 and parts[0] == "stage":
+                            if len(parts) >= 2:
                                 try:
                                     stage_num = int(parts[1])
-                                    all_stage_numbers.add(stage_num)
+                                    all_stages.add(stage_num)
                                 except ValueError:
                                     pass
                     
-                    if not all_stage_numbers:
-                        logger.warning("No stages found at all!")
+                    logger.info(f"Found all existing stages: {sorted(all_stages)}")
+                    logger.info(f"Will add mentor to tracks: {selected_tracks}")
+                    
+                    if not all_stages:
+                        logger.warning("No stages exist in this workspace!")
                         return
                     
-                    max_stage = max(all_stage_numbers)
-                    logger.info(f"Found stages: {sorted(all_stage_numbers)}, max stage: {max_stage}")
-                    
-                    # Find all stages that have the mentor's track channels
-                    stages_to_add = set()
-                    
-                    # Log all stage channels for debugging
-                    stage_channels = {}
-                    for ch in all_channels:
-                        if ch['name'].startswith("stage-"):
-                            stage_channels[ch['name']] = ch['id']
-                    
-                    logger.info(f"Available stage channels ({len(stage_channels)}): {sorted(stage_channels.keys())}")
-                    logger.info(f"Looking for tracks: {selected_tracks}")
-                    
-                    # Find stages with the selected tracks
-                    for track in selected_tracks:
-                        matching_channels = [ch for ch in all_channels 
-                                            if ch['name'].endswith(f"-{track}") and ch['name'].startswith("stage-")]
-                        logger.info(f"  Track '{track}': Found {len(matching_channels)} channels: {[ch['name'] for ch in matching_channels]}")
-                        
-                        for ch in matching_channels:
-                            # Extract stage number from "stage-2-backend" -> "2"
-                            parts = ch['name'].split('-')
-                            if len(parts) >= 2 and parts[0] == "stage":
-                                try:
-                                    stage_num = int(parts[1])
-                                    stages_to_add.add(stage_num)
-                                except ValueError:
-                                    pass
-                    
-                    # If no stages found through track channels, add ALL stages for mentor
-                    if not stages_to_add:
-                        logger.warning(f"No track channels found for {selected_tracks}, adding to ALL stages instead")
-                        stages_to_add = all_stage_numbers
-                    
-                    logger.info(f"Stages to add mentor to: {sorted(stages_to_add)}")
-                    
-                    # Add mentor to all found stages
-                    for stage_num in sorted(stages_to_add):
+                    # Add mentor to ALL existing stages
+                    for stage_num in sorted(all_stages):
                         # First, add to the general stage channel (stage-1, stage-2, etc.)
                         general_channel_name = f"stage-{stage_num}"
                         try:

@@ -603,6 +603,25 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                     
                     logger.info(f"Retrieved {len(all_channels)} channels from Slack")
                     
+                    # Find all stage numbers that exist
+                    all_stage_numbers = set()
+                    for ch in all_channels:
+                        if ch['name'].startswith("stage-"):
+                            parts = ch['name'].split('-')
+                            if len(parts) >= 2 and parts[0] == "stage":
+                                try:
+                                    stage_num = int(parts[1])
+                                    all_stage_numbers.add(stage_num)
+                                except ValueError:
+                                    pass
+                    
+                    if not all_stage_numbers:
+                        logger.warning("No stages found at all!")
+                        return
+                    
+                    max_stage = max(all_stage_numbers)
+                    logger.info(f"Found stages: {sorted(all_stage_numbers)}, max stage: {max_stage}")
+                    
                     # Find all stages that have the mentor's track channels
                     stages_to_add = set()
                     
@@ -615,6 +634,7 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                     logger.info(f"Available stage channels ({len(stage_channels)}): {sorted(stage_channels.keys())}")
                     logger.info(f"Looking for tracks: {selected_tracks}")
                     
+                    # Find stages with the selected tracks
                     for track in selected_tracks:
                         matching_channels = [ch for ch in all_channels 
                                             if ch['name'].endswith(f"-{track}") and ch['name'].startswith("stage-")]
@@ -630,11 +650,12 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str], sync_
                                 except ValueError:
                                     pass
                     
+                    # If no stages found through track channels, add ALL stages for mentor
                     if not stages_to_add:
-                        logger.warning(f"No stages found with tracks {selected_tracks}")
-                        return
+                        logger.warning(f"No track channels found for {selected_tracks}, adding to ALL stages instead")
+                        stages_to_add = all_stage_numbers
                     
-                    logger.info(f"Found stages for mentor's tracks: {sorted(stages_to_add)}")
+                    logger.info(f"Stages to add mentor to: {sorted(stages_to_add)}")
                     
                     # Add mentor to all found stages
                     for stage_num in sorted(stages_to_add):

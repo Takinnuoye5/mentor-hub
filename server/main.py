@@ -439,9 +439,9 @@ def _handle_update_confirmation(user_id: str, action_type: str, response_url: st
             combined_tracks.sort()
             logger.info(f"Update ADD: {user_id} will have tracks {combined_tracks}")
             final_tracks = combined_tracks
-            # Only sync NEW tracks (ones not already in existing)
-            tracks_to_sync = list(set(new_tracks) - set(existing_tracks))
-            sync_mode = "update"  # For ADD: only sync new tracks
+            # Sync ALL tracks (in case mentor left any channels, they need to be re-added)
+            tracks_to_sync = combined_tracks
+            sync_mode = "update"  # For ADD: sync all tracks using direct API
         else:  # replace
             # Use only new tracks
             logger.info(f"Update REPLACE: {user_id} will have tracks {new_tracks}")

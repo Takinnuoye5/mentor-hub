@@ -392,8 +392,100 @@ def _process_action(action_id: str, payload: Dict[str, Any]) -> None:
         
         elif action_id == "submit_tracks":
             _process_submission(user_id, payload)
+        
+        elif action_id == "confirm_update_add":
+            _handle_update_confirmation(user_id, "add")
+        
+        elif action_id == "confirm_update_replace":
+            _handle_update_confirmation(user_id, "replace")
+    
     except Exception as e:
         logger.error(f"Error processing action: {e}")
+
+
+def _handle_update_confirmation(user_id: str, action_type: str) -> None:
+    """Handle the confirmation of track update (add or replace)"""
+    try:
+        # Get pending update data
+        if not hasattr(_process_submission, 'pending_updates'):
+            logger.warning(f"No pending update found for {user_id}")
+            return
+        
+        pending = _process_submission.pending_updates.get(user_id)
+        if not pending:
+            logger.warning(f"No pending update found for {user_id}")
+            return
+        
+        new_tracks = pending['new_tracks']
+        existing_tracks = pending['existing_tracks']
+        payload = pending['payload']
+        
+        try:
+            from server.mentor_track_cli import save_track_selection, get_mentor_existing_tracks
+        except ImportError:
+            from mentor_track_cli import save_track_selection, get_mentor_existing_tracks
+        
+        if action_type == "add":
+            # Merge tracks: add new ones to existing
+            combined_tracks = list(set(existing_tracks + new_tracks))
+            combined_tracks.sort()
+            logger.info(f"Update ADD: {user_id} will have tracks {combined_tracks}")
+            final_tracks = combined_tracks
+        else:  # replace
+            # Use only new tracks
+            logger.info(f"Update REPLACE: {user_id} will have tracks {new_tracks}")
+            final_tracks = new_tracks
+        
+        # Save tracks
+        if save_track_selection(user_id, final_tracks):
+            readable = [track_id_to_display_name(t) for t in final_tracks]
+            action_msg = "added to" if action_type == "add" else "changed to"
+            
+            blocks = [
+                {"type": "section", "text": {"type": "mrkdwn", "text": "✅ *Track selection updated!*"}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"Your tracks have been {action_msg}: *{', '.join(readable)}*"}}
+            ]
+            
+            update_slack_message(user_id, blocks, "✅ Updated", 
+                               payload.get("channel", {}).get("id"), 
+                               payload.get("container", {}).get("message_ts"),
+                               payload.get("response_url"))
+            
+            # Send DM
+            try:
+                if not TESTING_MODE:
+                    dm = bot_client.conversations_open(users=user_id)
+                    if action_type == "add":
+                        message = f"""✅ Your track selection has been updated (tracks added).
+
+All your tracks: {', '.join(readable)}
+
+🚀 You will be added to all stage channels for these tracks! Thank you for mentoring with HNG!"""
+                    else:
+                        message = f"""✅ Your track selection has been changed.
+
+Selected Tracks: {', '.join(readable)}
+
+🚀 You will be added to all stage channels for these tracks! Thank you for mentoring with HNG!"""
+                    
+                    bot_client.chat_postMessage(channel=dm["channel"]["id"], text=message)
+            except Exception as e:
+                logger.error(f"DM error: {e}")
+            
+            # 🚀 INSTANT MENTOR SYNC
+            logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {final_tracks}")
+            _trigger_instant_mentor_sync(user_id, final_tracks)
+            
+            # Notify admin
+            notify_admin_channel(user_id, final_tracks, is_update=True)
+        
+        # Clean up pending update
+        del _process_submission.pending_updates[user_id]
+    
+    except Exception as e:
+        logger.error(f"Error handling update confirmation: {e}")
+
+
 
 def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> None:
     """
@@ -453,7 +545,7 @@ def _trigger_instant_mentor_sync(user_id: str, selected_tracks: List[str]) -> No
     logger.info(f"🚀 Instant mentor sync triggered in background for {user_id}")
 
 def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
-    """Process track submission"""
+    """Process track submission - checks if mentor exists and shows confirmation if needed"""
     try:
         # Get selected tracks
         tracks = []
@@ -471,48 +563,110 @@ def _process_submission(user_id: str, payload: Dict[str, Any]) -> None:
             logger.warning(f"No valid tracks from {user_id}")
             return
         
-        logger.info(f"Saving tracks for {user_id}: {tracks}")
+        logger.info(f"Processing submission for {user_id}: {tracks}")
         
-        # Import and save
+        # Import functions
         try:
-            from server.mentor_track_cli import save_track_selection, check_if_mentor_exists
+            from server.mentor_track_cli import save_track_selection, check_if_mentor_exists, get_mentor_existing_tracks
         except ImportError:
-            from mentor_track_cli import save_track_selection, check_if_mentor_exists
+            from mentor_track_cli import save_track_selection, check_if_mentor_exists, get_mentor_existing_tracks
         
-        if save_track_selection(user_id, tracks):
-            readable = [track_id_to_display_name(t) for t in tracks]
-            blocks = [
-                {"type": "section", "text": {"type": "mrkdwn", "text": "✅ *Track selection saved!*"}},
-                {"type": "section", "text": {"type": "mrkdwn", "text": f"Selected: *{', '.join(readable)}*"}}
-            ]
+        # Check if mentor already exists
+        if check_if_mentor_exists(user_id):
+            existing_tracks = get_mentor_existing_tracks(user_id)
+            logger.info(f"Mentor {user_id} already exists with tracks: {existing_tracks}")
             
-            update_slack_message(user_id, blocks, "✅ Saved", 
-                               payload.get("channel", {}).get("id"), 
-                               payload.get("container", {}).get("message_ts"),
-                               payload.get("response_url"))
+            # Store in a temporary dict so we can reference it in confirmation handlers
+            if not hasattr(_process_submission, 'pending_updates'):
+                _process_submission.pending_updates = {}
+            _process_submission.pending_updates[user_id] = {
+                'new_tracks': tracks,
+                'existing_tracks': existing_tracks,
+                'payload': payload
+            }
             
-            # Send DM
-            try:
-                if not TESTING_MODE:
-                    dm = bot_client.conversations_open(users=user_id)
-                    message = f"""✅ Your track selection has been recorded.
+            # Show confirmation dialog
+            _show_update_confirmation_dialog(user_id, existing_tracks, tracks, payload)
+        else:
+            # New mentor - save directly
+            _save_tracks_and_notify(user_id, tracks, payload, is_update=False)
+    
+    except Exception as e:
+        logger.error(f"Submission error: {e}")
+
+
+def _show_update_confirmation_dialog(user_id: str, existing_tracks: List[str], new_tracks: List[str], payload: Dict[str, Any]) -> None:
+    """Show a confirmation dialog for updating vs replacing tracks"""
+    try:
+        channel_id = payload.get("channel", {}).get("id")
+        
+        existing_readable = [track_id_to_display_name(t) for t in existing_tracks]
+        new_readable = [track_id_to_display_name(t) for t in new_tracks]
+        
+        blocks = [
+            {"type": "section", "text": {"type": "mrkdwn", "text": "🔄 *You've already submitted tracks before!*"}},
+            {"type": "divider"},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Your current tracks:*\n{', '.join(existing_readable)}"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*New selection:*\n{', '.join(new_readable)}"}},
+            {"type": "divider"},
+            {"type": "section", "text": {"type": "mrkdwn", "text": "_What would you like to do?_"}},
+            {"type": "actions", "block_id": "update_confirmation", "elements": [
+                {"type": "button", "text": {"type": "plain_text", "text": "Update (Add new tracks)"},
+                 "value": "update_add", "action_id": "confirm_update_add",
+                 "style": "primary"},
+                {"type": "button", "text": {"type": "plain_text", "text": "Replace (Use only new selection)"},
+                 "value": "update_replace", "action_id": "confirm_update_replace",
+                 "style": "danger"}
+            ]}
+        ]
+        
+        bot_client.chat_postEphemeral(channel=channel_id, user=user_id, text="Track update confirmation", blocks=blocks)
+        logger.info(f"Sent update confirmation dialog to {user_id}")
+    
+    except Exception as e:
+        logger.error(f"Error showing confirmation dialog: {e}")
+
+
+def _save_tracks_and_notify(user_id: str, tracks: List[str], payload: Dict[str, Any], is_update: bool = False) -> None:
+    """Save tracks and send notifications"""
+    try:
+        from server.mentor_track_cli import save_track_selection
+    except ImportError:
+        from mentor_track_cli import save_track_selection
+    
+    if save_track_selection(user_id, tracks):
+        readable = [track_id_to_display_name(t) for t in tracks]
+        blocks = [
+            {"type": "section", "text": {"type": "mrkdwn", "text": "✅ *Track selection saved!*"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"Selected: *{', '.join(readable)}*"}}
+        ]
+        
+        update_slack_message(user_id, blocks, "✅ Saved", 
+                           payload.get("channel", {}).get("id"), 
+                           payload.get("container", {}).get("message_ts"),
+                           payload.get("response_url"))
+        
+        # Send DM
+        try:
+            if not TESTING_MODE:
+                dm = bot_client.conversations_open(users=user_id)
+                action_text = "updated" if is_update else "recorded"
+                message = f"""✅ Your track selection has been {action_text}.
 
 Selected Tracks: {', '.join(readable)}
 
 🚀 You will be added to all stage channels for these tracks right now! Thank you for mentoring with HNG!"""
-                    bot_client.chat_postMessage(channel=dm["channel"]["id"], text=message)
-            except Exception as e:
-                logger.error(f"DM error: {e}")
-            
-            # 🚀 INSTANT MENTOR SYNC: Add mentor to all existing stage channels immediately
-            logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {tracks}")
-            _trigger_instant_mentor_sync(user_id, tracks)
-            
-            # Notify admin
-            is_update = check_if_mentor_exists(user_id)
-            notify_admin_channel(user_id, tracks, is_update)
-    except Exception as e:
-        logger.error(f"Submission error: {e}")
+                bot_client.chat_postMessage(channel=dm["channel"]["id"], text=message)
+        except Exception as e:
+            logger.error(f"DM error: {e}")
+        
+        # 🚀 INSTANT MENTOR SYNC
+        logger.info(f"🚀 Triggering instant mentor sync for {user_id} with tracks: {tracks}")
+        _trigger_instant_mentor_sync(user_id, tracks)
+        
+        # Notify admin
+        notify_admin_channel(user_id, tracks, is_update)
+
 
 # ============================================================================
 # ENTRY POINT

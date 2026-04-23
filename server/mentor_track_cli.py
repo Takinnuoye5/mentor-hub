@@ -222,3 +222,26 @@ def get_mentor_info(user_id: str) -> Optional[dict]:
     except Exception as e:
         logger.error(f"Error fetching mentor info: {e}", exc_info=True)
         return None
+
+
+def get_mentor_existing_tracks(user_id: str) -> List[str]:
+    """
+    Get a mentor's currently selected tracks from the sheet.
+    
+    Args:
+        user_id: Slack user ID
+    
+    Returns:
+        List of track IDs (e.g., ['backend', 'frontend']) or empty list if not found
+    """
+    mentor_info = get_mentor_info(user_id)
+    if not mentor_info:
+        return []
+    
+    tracks_str = mentor_info.get("Selected Tracks", "").strip()
+    if not tracks_str:
+        return []
+    
+    # Parse comma-separated tracks
+    tracks = [t.strip() for t in tracks_str.split(",") if t.strip()]
+    return tracks

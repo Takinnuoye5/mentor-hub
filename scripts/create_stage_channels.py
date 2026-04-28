@@ -762,21 +762,29 @@ def add_users_to_channel(channel_id, user_ids, channel_name, batch_size=10, max_
 
 
 def _notify_new_members(channel_id: str, user_ids: List[str], channel_name: str, context: Optional[str] = None):
-    """Post a minimal message that only mentions the newly added users.
+    """Post a message mentioning newly added users (including Thanos bot).
 
     Args:
         channel_id: Slack channel ID
         user_ids: list of user IDs that were actually added
         channel_name: friendly name for logs
-        context: optional extra text, e.g., the track name (unused in minimal mention)
+        context: optional extra text, e.g., the track name
     """
     if not user_ids:
         return
     try:
-        mention_text = " ".join([f"<@{uid}>" for uid in user_ids])
-        # Send only the mentions to keep the message non-spammy
-        bot_client.chat_postMessage(channel=channel_id, text=mention_text)
-        print(f"   💬 Posted minimal mention in {channel_name} for {len(user_ids)} user(s)")
+        # Filter out non-user-id values (keep only proper Slack IDs)
+        valid_ids = [uid for uid in user_ids if uid and isinstance(uid, str) and (uid.startswith('U') or uid.startswith('B'))]
+        
+        if not valid_ids:
+            return
+        
+        mention_text = " ".join([f"<@{uid}>" for uid in valid_ids])
+        message = f"Welcome to {channel_name}! {mention_text} {"has" if len(valid_ids) == 1 else "have"} been added to manage this stage."
+        
+        # Send the message
+        bot_client.chat_postMessage(channel=channel_id, text=message)
+        print(f"   💬 Posted message mentioning {len(valid_ids)} user(s) in {channel_name}")
     except Exception as e:
         print(f"   ⚠️ Could not post mention in {channel_name}: {e}")
 

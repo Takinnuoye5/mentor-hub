@@ -326,6 +326,57 @@ def get_user_id_by_username(username, users=None):
     return None
 
 
+def get_channel_only(channel_name, verbose=True):
+    """Retrieve an EXISTING channel by name without creating or unarchiving it.
+    
+    Returns:
+        - Channel ID if found and NOT archived
+        - None if not found, archived, or any error
+    
+    This is used by mentor sync to only add mentors to active channels.
+    """
+    channel_name = channel_name.lower().replace("_", "-").replace(" ", "-")
+    if verbose:
+        print(f"🔍 Looking for channel: {channel_name}")
+
+    cursor = None
+    for attempt in range(3):
+        try:
+            while True:
+                resp = bot_client.conversations_list(
+                    types="public_channel,private_channel",
+                    limit=200,
+                    cursor=cursor,
+                )
+                for ch in resp.get("channels", []):
+                    if ch["name"] == channel_name:
+                        is_archived = ch.get("is_archived", False)
+                        if is_archived:
+                            if verbose:
+                                print(f"⏭️  Channel {channel_name} is archived - skipping")
+                            return None
+                        if verbose:
+                            privacy = "private" if ch.get("is_private", False) else "public"
+                            print(f"✅ Found active {privacy} channel: {channel_name}")
+                        return ch["id"]
+                cursor = resp.get("response_metadata", {}).get("next_cursor")
+                if not cursor:
+                    break
+            break
+        except SlackApiError as e:
+            if verbose:
+                print(f"⚠️ Slack API error while listing channels: {e.response['error']}")
+            time.sleep(2)
+        except Exception as e:
+            if verbose:
+                print(f"⚠️ Network read error (attempt {attempt+1}/3): {e}")
+            time.sleep(3)
+
+    if verbose:
+        print(f"❌ Channel not found: {channel_name}")
+    return None
+
+
 def get_or_create_channel(channel_name, is_private=True):
     """Create or retrieve a channel by name."""
     channel_name = channel_name.lower().replace("_", "-").replace(" ", "-")

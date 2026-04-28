@@ -56,18 +56,28 @@ if _env_creds:
 
 def build_stage_channels_map(stage_number: int):
     """Resolve channel IDs for main stage and each track.
-    Returns a dict like {"main": id, "backend": id, ...}.
+    
+    Returns a dict like {"main": id, "backend": id, ...} but ONLY includes
+    active (non-archived) channels. Returns None for channels that don't exist
+    or are archived (will be skipped by mentor sync logic).
     """
     stage_name = f"stage-{stage_number}"
     channels = {}
 
-    # Main stage channel
-    channels["main"] = csc.get_or_create_channel(stage_name)
+    # Main stage channel - only if it exists and is active
+    main_id = csc.get_channel_only(stage_name, verbose=False)
+    if main_id:
+        channels["main"] = main_id
+    else:
+        print(f"⏭️  Skipping stage-{stage_number} (main channel not found or archived)")
+        return channels  # Return empty or partial map
 
-    # Per-track channels
+    # Per-track channels - only if they exist and are active
     for track in csc.TRACKS.keys():
         ch_name = f"{stage_name}-{track}"
-        channels[track] = csc.get_or_create_channel(ch_name)
+        ch_id = csc.get_channel_only(ch_name, verbose=False)
+        if ch_id:
+            channels[track] = ch_id
 
     return channels
 

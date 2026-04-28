@@ -16,8 +16,16 @@ import os
 import sys
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from slack_sdk import WebClient
+from dotenv import load_dotenv
+
+# Load environment
+load_dotenv(dotenv_path=str(Path(__file__).parent.parent / '.env'))
+BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN_HNG14")
+bot_client = WebClient(token=BOT_TOKEN)
 
 # Setup logging
 logging.basicConfig(
@@ -145,21 +153,25 @@ def create_next_stage(state):
 
 
 def sync_mentors_to_channels(state):
-    """Add new mentors to ALL existing stage channels by running add_mentors_to_existing_stage.py"""
+    """Add new mentors to ALL ACTIVE stage channels by discovering which stages exist and are not archived"""
     try:
-        logger.info("🔄 Syncing mentors to all stage channels...")
+        logger.info("🔄 Discovering active stages...")
         
-        # Get the current stage number
-        current_stage = state["last_stage_number"]
-        if current_stage == 0:
-            logger.warning("⚠️ No stages created yet, skipping mentor sync")
+        # Discover which stages are actually active (not archived)
+        active_stages = _discover_active_stages()
+        
+        if not active_stages:
+            logger.warning("⚠️ No active stage channels found, skipping mentor sync")
             return False
         
-        # Sync mentors to ALL existing stages (1 through current)
+        logger.info(f"✅ Found active stages: {sorted(active_stages)}")
+        logger.info("🔄 Syncing mentors to all active stage channels...")
+        
+        # Sync mentors to each active stage
         import subprocess
         all_success = True
         
-        for stage_num in range(1, current_stage + 1):
+        for stage_num in sorted(active_stages):
             logger.info(f"  → Syncing mentors to stage-{stage_num}...")
             result = subprocess.run(
                 [sys.executable, "add_mentors_to_existing_stage.py", str(stage_num)],
@@ -178,10 +190,10 @@ def sync_mentors_to_channels(state):
             # Update state on success
             state["last_mentor_sync"] = datetime.now().isoformat()
             save_state(state)
-            logger.info(f"✅ All mentors synced to stages 1-{current_stage}")
+            logger.info(f"✅ All mentors synced to active stages: {sorted(active_stages)}")
             return True
         else:
-            logger.warning(f"⚠️ Mentor sync completed with some errors for stages 1-{current_stage}")
+            logger.warning(f"⚠️ Mentor sync completed with some errors for active stages")
             state["last_mentor_sync"] = datetime.now().isoformat()
             save_state(state)
             return False
@@ -189,6 +201,52 @@ def sync_mentors_to_channels(state):
     except Exception as e:
         logger.error(f"❌ Failed to sync mentors: {e}", exc_info=True)
         return False
+
+
+def _discover_active_stages():
+    """Discover which stage channels are active (exist and not archived).
+    
+    Returns a set of stage numbers, e.g., {1, 2, 3, 4}
+    """
+    stages = set()
+    cursor = None
+    stage_pattern = re.compile(r'^stage-(\d+)$')
+    
+    for attempt in range(3):
+        try:
+            while True:
+                resp = bot_client.conversations_list(
+                    types="private_channel",
+                    limit=200,
+                    cursor=cursor,
+                )
+                
+                for ch in resp.get("channels", []):
+                    # Match "stage-N" pattern (main channel only, not track channels)
+                    match = stage_pattern.match(ch["name"])
+                    if match:
+                        stage_num = int(match.group(1))
+                        # Only include if NOT archived
+                        if not ch.get("is_archived", False):
+                            stages.add(stage_num)
+                            logger.info(f"  ✅ Found active stage: stage-{stage_num}")
+                        else:
+                            logger.info(f"  ⏭️  Skipping archived stage: stage-{stage_num}")
+                
+                cursor = resp.get("response_metadata", {}).get("next_cursor")
+                if not cursor:
+                    break
+            
+            return stages
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error discovering stages (attempt {attempt+1}/3): {e}")
+            if attempt < 2:
+                import time
+                time.sleep(2)
+    
+    logger.error("❌ Could not discover active stages")
+    return stages
 
 
 def main():

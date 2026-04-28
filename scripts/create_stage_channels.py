@@ -1016,15 +1016,9 @@ def add_mentors_to_stage_channels(stage_number, channels):
     additional_user_id_5 = "U0AFJEN4HPA"  # Additional user to add to all channels
     additional_user_id_6 = "U0AE8NEAD55"  # Additional user to add to all channels
     
-    # Resolve Thanos bot by username
-    all_users = fetch_all_users(max_retries=3, use_cache_file=True)
-    thanos_id = get_user_id_by_username("Thanos", all_users)
-    if thanos_id:
-        print(f"✅ Resolved Thanos bot: {thanos_id}")
-    else:
-        # If we can't resolve Thanos by ID, mark it with @ prefix to trigger username-based invitation
-        print(f"⚠️  Could not resolve Thanos by user ID, will try username-based invitation")
-        thanos_id = "@Thanos"
+    # Thanos bot user ID (HNG management bot)
+    thanos_id = "U0APSR995F0"
+    print(f"✅ Using Thanos bot ID: {thanos_id}")
     
     # Add all mentors to the main stage channel first
     main_channel_id = channels.get("main")
@@ -1063,13 +1057,10 @@ def add_mentors_to_stage_channels(stage_number, channels):
             mentor_ids.append(additional_user_id_6)
             print(f"📎 Adding additional user (U0AE8NEAD55) to all channels")
         
-        # Add Thanos bot if resolved (or marked for username-based invitation)
+        # Add Thanos bot if we have the ID
         if thanos_id and thanos_id not in mentor_ids:
             mentor_ids.append(thanos_id)
-            if thanos_id.startswith("@"):
-                print(f"🤖 Marking Thanos bot for username-based invitation")
-            else:
-                print(f"🤖 Adding Thanos bot to all channels")
+            print(f"🤖 Adding Thanos bot to all channels")
 
         added_main = add_users_to_channel(main_channel_id, mentor_ids, stage_name)
         # Mention all successfully added members

@@ -492,13 +492,25 @@ def add_users_to_channel(channel_id, user_ids, channel_name, batch_size=10, max_
     
     Args:
         channel_id: ID of the channel to add users to
-        user_ids: List of user IDs to add
+        user_ids: List of user IDs to add (can include "@username" for bots without IDs)
         channel_name: Name of channel for logging purposes
         batch_size: Number of users to add in each API call (smaller is more reliable)
         max_retries: Maximum number of retry attempts on failure
     """
-    valid_user_ids = [uid for uid in user_ids if uid]
-    if not valid_user_ids:
+    # Separate regular user IDs from username strings (marked with @)
+    valid_user_ids = []
+    username_invites = []  # Bots that need username-based invitation
+    
+    for uid in user_ids:
+        if not uid:
+            continue
+        if isinstance(uid, str) and uid.startswith("@"):
+            # This is a username, not a user ID
+            username_invites.append(uid[1:])  # Remove the @ prefix
+        else:
+            valid_user_ids.append(uid)
+    
+    if not valid_user_ids and not username_invites:
         print(f"⚠️ No valid users to add to {channel_name}")
         return []
     
@@ -716,6 +728,35 @@ def add_users_to_channel(channel_id, user_ids, channel_name, batch_size=10, max_
         print(f"   ⚠️ Added {added_count}/{len(users_to_add)} users to {channel_name} ({failed_count} failed)")
     else:
         print(f"   ✅ Successfully added {added_count}/{len(users_to_add)} users to {channel_name}")
+    
+    # Now handle username-based invitations for bots (like Thanos)
+    if username_invites:
+        print(f"\n   🤖 Adding bots by username to {channel_name}...")
+        for username in username_invites:
+            try:
+                # Try to find the bot by display name using the users list
+                bot_user = None
+                for user in (users_cache or []) + list(user_cache.user_cache.values()):
+                    if not user:
+                        continue
+                    profile = user.get("profile", {})
+                    if profile.get("display_name", "").lower() == username.lower() or user.get("name", "").lower() == username.lower():
+                        bot_user = user
+                        break
+                
+                if bot_user:
+                    bot_id = bot_user.get("id")
+                    try:
+                        users_param = bot_id
+                        bot_client.conversations_invite(channel=channel_id, users=users_param)
+                        actually_added.append(bot_id)
+                        print(f"   ✅ Added bot '{username}' ({bot_id}) to {channel_name}")
+                    except Exception as e:
+                        print(f"   ⚠️ Failed to add bot '{username}': {str(e)}")
+                else:
+                    print(f"   ⚠️ Could not find bot by username '{username}' in user list")
+            except Exception as e:
+                print(f"   ⚠️ Error processing bot '{username}': {str(e)}")
 
     return actually_added
 
@@ -981,8 +1022,9 @@ def add_mentors_to_stage_channels(stage_number, channels):
     if thanos_id:
         print(f"✅ Resolved Thanos bot: {thanos_id}")
     else:
-        print(f"⚠️  Could not resolve Thanos bot username")
-        thanos_id = None
+        # If we can't resolve Thanos by ID, mark it with @ prefix to trigger username-based invitation
+        print(f"⚠️  Could not resolve Thanos by user ID, will try username-based invitation")
+        thanos_id = "@Thanos"
     
     # Add all mentors to the main stage channel first
     main_channel_id = channels.get("main")
@@ -1021,10 +1063,13 @@ def add_mentors_to_stage_channels(stage_number, channels):
             mentor_ids.append(additional_user_id_6)
             print(f"📎 Adding additional user (U0AE8NEAD55) to all channels")
         
-        # Add Thanos bot if resolved
+        # Add Thanos bot if resolved (or marked for username-based invitation)
         if thanos_id and thanos_id not in mentor_ids:
             mentor_ids.append(thanos_id)
-            print(f"🤖 Adding Thanos bot to all channels")
+            if thanos_id.startswith("@"):
+                print(f"🤖 Marking Thanos bot for username-based invitation")
+            else:
+                print(f"🤖 Adding Thanos bot to all channels")
 
         added_main = add_users_to_channel(main_channel_id, mentor_ids, stage_name)
         # Mention all successfully added members

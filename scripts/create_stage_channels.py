@@ -762,7 +762,7 @@ def add_users_to_channel(channel_id, user_ids, channel_name, batch_size=10, max_
 
 
 def _notify_new_members(channel_id: str, user_ids: List[str], channel_name: str, context: Optional[str] = None):
-    """Post a message mentioning newly added users (including Thanos bot).
+    """Post a minimal message that only mentions the newly added users.
 
     Args:
         channel_id: Slack channel ID
@@ -779,12 +779,10 @@ def _notify_new_members(channel_id: str, user_ids: List[str], channel_name: str,
         if not valid_ids:
             return
         
+        # Just mention the users, no extra message
         mention_text = " ".join([f"<@{uid}>" for uid in valid_ids])
-        message = f"Welcome to {channel_name}! {mention_text} {"has" if len(valid_ids) == 1 else "have"} been added to manage this stage."
-        
-        # Send the message
-        bot_client.chat_postMessage(channel=channel_id, text=message)
-        print(f"   💬 Posted message mentioning {len(valid_ids)} user(s) in {channel_name}")
+        bot_client.chat_postMessage(channel=channel_id, text=mention_text)
+        print(f"   💬 Posted mention in {channel_name} for {len(valid_ids)} user(s)")
     except Exception as e:
         print(f"   ⚠️ Could not post mention in {channel_name}: {e}")
 
